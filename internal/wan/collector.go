@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	cacheTTL    = 5 * time.Second
+	cacheTTL    = 1 * time.Second
 	execTimeout = 2 * time.Second
 )
 

@@ -10,16 +10,22 @@ pispot &copy; MCS 'Net Productions 2026
 
 ## Status
 
-**M4 — all sections live.** WAN link info (`iw dev <iface> link` plus
-`ip -j addr` and `ip -j route`) and admin interface (`operstate` plus
-`ip -j addr`) complete the dashboard. Every block in `/api/stats` is
-now sourced from the running system, and `meta.stub` is `false`. WAN
-disconnection (no associated AP) clears the IP/BSSID/SSID/signal/freq/
-bitrate/gateway fields so the UI never shows stale data for a link
-that is definitively not associated. All non-netstats collectors
-refresh lazily with a 5 s TTL and 2 s exec timeout; on failure the
-last-good data is retained and the error is surfaced in the
-section-level `.error` field.
+**M5 — System pane + bottom-row layout.** A new System section
+reports load average (1/5/15 m), memory (used/total), SoC temperature
+with thermal-zone auto-detection, and an inferred thermal-throttle
+flag (temp ≥ 80 °C). WAN, Admin, and System now live side-by-side in
+a single row of equal thirds below the Interfaces and Hotspot tables.
+
+**M4 — all network sections live.** WAN link info (`iw dev <iface>
+link` plus `ip -j addr` and `ip -j route`) and admin interface
+(`operstate` plus `ip -j addr`) complete the dashboard. Every block in
+`/api/stats` is now sourced from the running system, and `meta.stub`
+is `false`. WAN disconnection (no associated AP) clears the
+IP/BSSID/SSID/signal/freq/bitrate/gateway fields so the UI never shows
+stale data for a link that is definitively not associated. All
+non-netstats collectors refresh lazily with a 5 s TTL and 2 s exec
+timeout; on failure the last-good data is retained and the error is
+surfaced in the section-level `.error` field.
 
 Hotspot-client signal note: Pi 5 built-in wireless (`brcmfmac` driver)
 does not expose per-station RSSI in AP mode, so hotspot client signal

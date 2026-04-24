@@ -17,7 +17,7 @@ import (
 // Default timings. cacheTTL bounds iw exec frequency even under rapid
 // polling; execTimeout prevents a hung iw from wedging the handler.
 const (
-	cacheTTL    = 5 * time.Second
+	cacheTTL    = 1 * time.Second
 	execTimeout = 2 * time.Second
 )
 

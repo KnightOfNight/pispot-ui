@@ -12,6 +12,7 @@ import (
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
+	"github.com/mcs-net/pispot-ui/internal/system"
 	"github.com/mcs-net/pispot-ui/internal/wan"
 )
 
@@ -61,8 +62,22 @@ type WAN struct {
 type Admin struct {
 	Interface string `json:"interface"`
 	IP        string `json:"ip"`
+	Gateway   string `json:"gateway"`
 	Link      bool   `json:"link"`
 	Error     string `json:"error,omitempty"`
+}
+
+// System is the host-level summary (load, memory, temperature,
+// inferred throttling state).
+type System struct {
+	Load1m        float64 `json:"load_1m"`
+	Load5m        float64 `json:"load_5m"`
+	Load15m       float64 `json:"load_15m"`
+	MemTotalBytes uint64  `json:"mem_total_bytes"`
+	MemUsedBytes  uint64  `json:"mem_used_bytes"`
+	TempCelsius   float64 `json:"temp_celsius"`
+	Throttled     bool    `json:"throttled"`
+	Error         string  `json:"error,omitempty"`
 }
 
 // Meta holds process-level info useful for the dashboard footer/header.
@@ -82,6 +97,7 @@ type Stats struct {
 	Hotspot    Hotspot              `json:"hotspot"`
 	WAN        WAN                  `json:"wan"`
 	Admin      Admin                `json:"admin"`
+	System     System               `json:"system"`
 	Meta       Meta                 `json:"meta"`
 }
 
@@ -93,12 +109,14 @@ type Server struct {
 	hotspot  *hotspot.Collector
 	wan      *wan.Collector
 	admin    *admin.Collector
+	system   *system.Collector
 }
 
 // New returns a Server configured with cfg and the given collectors.
-// The netstats collector is expected to already be running in its own
-// goroutine; hotspot, wan, and admin collectors refresh lazily on read.
-func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector, wn *wan.Collector, ad *admin.Collector) *Server {
+// The netstats and system collectors are expected to already be
+// running in their own goroutines; hotspot, wan, and admin collectors
+// refresh lazily on read.
+func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector, wn *wan.Collector, ad *admin.Collector, sys *system.Collector) *Server {
 	return &Server{
 		cfg:      cfg,
 		started:  time.Now(),
@@ -106,6 +124,7 @@ func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector, wn *w
 		hotspot:  hs,
 		wan:      wn,
 		admin:    ad,
+		system:   sys,
 	}
 }
 
@@ -139,6 +158,32 @@ func (s *Server) wanFromCollector(r *http.Request) WAN {
 	return out
 }
 
+// systemFromCollector builds the JSON-facing System struct from the
+// system collector's latest snapshot.
+func (s *Server) systemFromCollector() System {
+	var out System
+	if s.system == nil {
+		return out
+	}
+	snap := s.system.Snapshot()
+	if snap == nil {
+		return out
+	}
+	out = System{
+		Load1m:        snap.Info.Load1m,
+		Load5m:        snap.Info.Load5m,
+		Load15m:       snap.Info.Load15m,
+		MemTotalBytes: snap.Info.MemTotalBytes,
+		MemUsedBytes:  snap.Info.MemUsedBytes,
+		TempCelsius:   snap.Info.TempCelsius,
+		Throttled:     snap.Info.Throttled,
+	}
+	if snap.Err != nil {
+		out.Error = snap.Err.Error()
+	}
+	return out
+}
+
 // adminFromCollector builds the JSON-facing Admin struct from the admin
 // collector's latest snapshot.
 func (s *Server) adminFromCollector(r *http.Request) Admin {
@@ -153,6 +198,7 @@ func (s *Server) adminFromCollector(r *http.Request) Admin {
 	out = Admin{
 		Interface: snap.Info.Interface,
 		IP:        snap.Info.IP,
+		Gateway:   snap.Info.Gateway,
 		Link:      snap.Info.Link,
 	}
 	if snap.Err != nil {
@@ -233,6 +279,7 @@ func (s *Server) Stats() http.HandlerFunc {
 			Hotspot:    s.hotspotFromCollector(r),
 			WAN:        s.wanFromCollector(r),
 			Admin:      s.adminFromCollector(r),
+			System:     s.systemFromCollector(),
 			Meta: Meta{
 				Hostname:      host,
 				UptimeSeconds: int64(time.Since(s.started).Seconds()),

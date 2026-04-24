@@ -152,7 +152,58 @@
     linkEl.textContent = a.link ? "up" : "down";
     setClass(linkEl, a.link ? "ok" : null); // down on admin is not "bad" — neutral
     $("admin-ip").textContent = a.ip || "-";
+    $("admin-gw").textContent = a.gateway || "-";
     $("admin-error").textContent = a.error || "";
+  }
+
+  function renderSystem(sys) {
+    // Load averages — all three, stacked vertically so the labels and
+    // numbers line up in two columns inside the kv-grid value cell.
+    // Uses innerHTML because the cell is a self-contained subgrid; the
+    // source values come from JSON and are clamped by fmtLoad.
+    const has = (v) => Number.isFinite(v);
+    const loadEl = $("sys-load");
+    if (has(sys.load_1m) || has(sys.load_5m) || has(sys.load_15m)) {
+      loadEl.innerHTML =
+        `<span class="k">1m</span><span>${fmtLoad(sys.load_1m)}</span>` +
+        `<span class="k">5m</span><span>${fmtLoad(sys.load_5m)}</span>` +
+        `<span class="k">15m</span><span>${fmtLoad(sys.load_15m)}</span>`;
+    } else {
+      loadEl.textContent = "-";
+    }
+
+    // Memory: just used / total, no percentage, no "available".
+    if (sys.mem_total_bytes) {
+      $("sys-mem").textContent =
+        `${fmtBytes(sys.mem_used_bytes)} / ${fmtBytes(sys.mem_total_bytes)}`;
+    } else {
+      $("sys-mem").textContent = "-";
+    }
+
+    // Temperature: one decimal.
+    if (has(sys.temp_celsius) && sys.temp_celsius !== 0) {
+      $("sys-temp").textContent = `${sys.temp_celsius.toFixed(1)} °C`;
+    } else {
+      $("sys-temp").textContent = "-";
+    }
+
+    // Throttle: binary; label as inferred since we derive from
+    // temperature, not the firmware flag.
+    const thEl = $("sys-throttle");
+    if (sys.throttled) {
+      thEl.textContent = "yes (inferred)";
+      setClass(thEl, "bad");
+    } else {
+      thEl.textContent = "no";
+      setClass(thEl, null);
+    }
+
+    $("sys-error").textContent = sys.error || "";
+  }
+
+  function fmtLoad(v) {
+    if (!Number.isFinite(v)) return "-";
+    return v.toFixed(2);
   }
 
   function renderMeta(m) {
@@ -169,6 +220,7 @@
     renderHotspot(data.hotspot || {});
     renderWAN(data.wan || {});
     renderAdmin(data.admin || {});
+    renderSystem(data.system || {});
     renderMeta(data.meta || {});
   }
 

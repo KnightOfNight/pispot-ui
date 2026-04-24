@@ -46,29 +46,43 @@
       <div class="error" id="hotspot-error"></div>
     </section>
 
-    <section id="section-wan">
-      <h2>WAN <span class="sub" id="wan-iface"></span></h2>
-      <div class="kv-grid">
-        <div>Connected</div><div id="wan-connected" class="num">-</div>
-        <div>SSID</div><div id="wan-ssid" class="num">-</div>
-        <div>BSSID</div><div id="wan-bssid" class="num mono">-</div>
-        <div>Signal</div><div id="wan-signal" class="num">-</div>
-        <div>Freq</div><div id="wan-freq" class="num">-</div>
-        <div>Tx bitrate</div><div id="wan-bitrate" class="num">-</div>
-        <div>IP</div><div id="wan-ip" class="num mono">-</div>
-        <div>Gateway</div><div id="wan-gw" class="num mono">-</div>
-      </div>
-      <div class="error" id="wan-error"></div>
-    </section>
+    <div class="row row-thirds">
+      <section id="section-wan">
+        <h2>WAN <span class="sub" id="wan-iface"></span></h2>
+        <div class="kv-grid">
+          <div>Connected</div><div id="wan-connected" class="num">-</div>
+          <div>SSID</div><div id="wan-ssid" class="num">-</div>
+          <div>BSSID</div><div id="wan-bssid" class="num mono">-</div>
+          <div>Signal</div><div id="wan-signal" class="num">-</div>
+          <div>Freq</div><div id="wan-freq" class="num">-</div>
+          <div>Tx bitrate</div><div id="wan-bitrate" class="num">-</div>
+          <div>IP</div><div id="wan-ip" class="num mono">-</div>
+          <div>Gateway</div><div id="wan-gw" class="num mono">-</div>
+        </div>
+        <div class="error" id="wan-error"></div>
+      </section>
 
-    <section id="section-admin">
-      <h2>Admin <span class="sub" id="admin-iface"></span></h2>
-      <div class="kv-grid">
-        <div>Link</div><div id="admin-link" class="num">-</div>
-        <div>IP</div><div id="admin-ip" class="num mono">-</div>
-      </div>
-      <div class="error" id="admin-error"></div>
-    </section>
+      <section id="section-admin">
+        <h2>Admin <span class="sub" id="admin-iface"></span></h2>
+        <div class="kv-grid">
+          <div>Link</div><div id="admin-link" class="num">-</div>
+          <div>IP</div><div id="admin-ip" class="num mono">-</div>
+          <div>Gateway</div><div id="admin-gw" class="num mono">-</div>
+        </div>
+        <div class="error" id="admin-error"></div>
+      </section>
+
+      <section id="section-system">
+        <h2>System</h2>
+        <div class="kv-grid">
+          <div>Load</div><div id="sys-load" class="num load-grid">-</div>
+          <div>Memory</div><div id="sys-mem" class="num">-</div>
+          <div>Temperature</div><div id="sys-temp" class="num">-</div>
+          <div>Throttled</div><div id="sys-throttle" class="num">-</div>
+        </div>
+        <div class="error" id="sys-error"></div>
+      </section>
+    </div>
   </main>
 
   <footer>

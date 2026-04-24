@@ -17,6 +17,7 @@ import (
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
+	"github.com/mcs-net/pispot-ui/internal/system"
 	"github.com/mcs-net/pispot-ui/internal/wan"
 	"github.com/mcs-net/pispot-ui/internal/web"
 )
@@ -29,10 +30,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Start the netstats collector in its own goroutine. It publishes
-	// snapshots that the API handlers read on demand.
+	// Start the netstats and system collectors in their own goroutines.
+	// Both publish snapshots via atomic pointer swap; API handlers
+	// read them lock-free.
 	ns := netstats.New(cfg)
 	go ns.Run(ctx)
+	sys := system.New(cfg)
+	go sys.Run(ctx)
 
 	// Hotspot, WAN, and admin collectors are lazy — no goroutines;
 	// each refreshes on demand with its own TTL and exec timeout.
@@ -40,7 +44,7 @@ func main() {
 	wn := wan.New(cfg)
 	ad := admin.New(cfg)
 
-	srv := api.New(cfg, ns, hs, wn, ad)
+	srv := api.New(cfg, ns, hs, wn, ad, sys)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", noCacheStatic(http.FileServer(http.FS(web.FS()))))

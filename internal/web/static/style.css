@@ -80,6 +80,28 @@ main {
   gap: 20px;
 }
 
+/* Row of equally-sized panes (WAN + Admin + System). */
+.row-thirds {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+}
+
+/* The Load value cell in the System pane is itself a small 2-column
+   grid so the three rows (1m / 5m / 15m) align vertically regardless
+   of value width. */
+.load-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: baseline;
+}
+.load-grid .k {
+  color: var(--muted);
+  font-weight: normal;
+}
+
 section {
   background: var(--panel);
   border: 1px solid var(--border);

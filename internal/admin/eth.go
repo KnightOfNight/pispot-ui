@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	cacheTTL    = 5 * time.Second
+	cacheTTL    = 1 * time.Second
 	execTimeout = 2 * time.Second
 )
 
@@ -31,6 +31,7 @@ const (
 type Info struct {
 	Interface string
 	IP        string
+	Gateway   string
 	Link      bool
 }
 
@@ -122,9 +123,10 @@ func (c *Collector) refresh(ctx context.Context) {
 	// IP address via `ip -j addr show <iface>`.
 	addrOut, addrErr := c.run(runCtx, "ip", "-j", "addr", "show", c.iface)
 	if addrErr != nil {
-		// Retain last-good IP; surface combined error text.
+		// Retain last-good IP + gateway; surface combined error text.
 		prior := prev.Info
 		info.IP = prior.IP
+		info.Gateway = prior.Gateway
 		err := fmt.Errorf("ip addr: %w", addrErr)
 		if opErr != nil {
 			err = fmt.Errorf("%w; operstate: %v", err, opErr)
@@ -134,6 +136,13 @@ func (c *Collector) refresh(ctx context.Context) {
 		return
 	}
 	info.IP = parseIPAddr(addrOut)
+
+	// Default gateway for this interface via `ip -j route show default`.
+	// Treated as non-fatal: if the route fetch fails we simply leave
+	// Gateway blank rather than blocking the rest of the section.
+	if routeOut, routeErr := c.run(runCtx, "ip", "-j", "route", "show", "default"); routeErr == nil {
+		info.Gateway = parseIPRoute(routeOut, c.iface)
+	}
 
 	next := &Snapshot{At: now, Info: info}
 	if opErr != nil {
@@ -162,6 +171,27 @@ func parseIPAddr(raw []byte) string {
 			if a.Family == "inet" && a.Local != "" {
 				return a.Local
 			}
+		}
+	}
+	return ""
+}
+
+// parseIPRoute extracts the gateway of the first default route whose
+// dev matches iface from `ip -j route show default` output. Returns ""
+// when no such route exists. Duplicated from the wan package to keep
+// package boundaries clean.
+func parseIPRoute(raw []byte, iface string) string {
+	var doc []struct {
+		Dst     string `json:"dst"`
+		Gateway string `json:"gateway"`
+		Dev     string `json:"dev"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return ""
+	}
+	for _, r := range doc {
+		if r.Dev == iface && r.Gateway != "" {
+			return r.Gateway
 		}
 	}
 	return ""
