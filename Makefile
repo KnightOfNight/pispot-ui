@@ -12,7 +12,12 @@ IMAGE      := pispot-ui:latest
 # emulation, but we set --platform explicitly so local and Pi builds match.
 PLATFORM   := linux/arm64
 
-.PHONY: all build test tidy vet fmt run-local docker-build image-size clean help
+# Pi SSH target for `make ship`. Override on the command line if needed:
+#   make ship PI_HOST=other-host.local
+PI_HOST    := n1qzs-radios.local
+
+.PHONY: all build test tidy vet fmt run-local docker-build image-size \
+        ship build-and-ship engage deploy clean help
 
 all: build
 
@@ -26,6 +31,10 @@ help:
 	@echo "  run-local     Build and run locally; API returns stub data"
 	@echo "  docker-build  Build the container image locally (linux/arm64)"
 	@echo "  image-size    Print the size of the local image"
+	@echo "  ship          Save local image and load it on the Pi ($(PI_HOST))"
+	@echo "  build-and-ship  docker-build then ship"
+	@echo "  engage        SSH to Pi and (re)start the container from the shipped image"
+	@echo "  deploy        docker-build, ship, engage (full Mac->Pi update in one shot)"
 	@echo "  clean         Remove local build artifacts"
 
 build:
@@ -57,6 +66,30 @@ image-size:
 	@docker image inspect $(IMAGE) --format '{{.Size}}' 2>/dev/null \
 		| awk '{printf "%.1f MB\n", $$1/1024/1024}' \
 		|| echo "image not built"
+
+# Ship the locally-built image to the Pi over SSH.
+# Assumes the image $(IMAGE) already exists locally; run `make docker-build`
+# first (or use `make build-and-ship`). On the Pi, use:
+#   docker compose up -d --no-build
+ship:
+	docker save $(IMAGE) | gzip | ssh $(PI_HOST) 'gunzip | docker load'
+
+# One-shot: rebuild the image and ship it to the Pi.
+build-and-ship: docker-build ship
+
+# Start or restart the container on the Pi using the locally-shipped image.
+# Pipes docker-compose.yml over SSH so the Pi does not need the git repo or
+# any local files beyond the Docker image loaded by `make ship`.
+# Uses --project-name pispot-ui so compose reconciles with any existing
+# container from an earlier git-clone-based deployment.
+COMPOSE_FILE := docker-compose.yml
+COMPOSE_PROJECT := pispot-ui
+
+engage:
+	ssh $(PI_HOST) 'docker compose --project-name $(COMPOSE_PROJECT) -f - up -d --no-build' < $(COMPOSE_FILE)
+
+# Full Mac -> Pi update: build, ship, start/restart.
+deploy: docker-build ship engage
 
 clean:
 	rm -rf bin

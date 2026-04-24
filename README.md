@@ -92,6 +92,44 @@ curl -s http://localhost:8080/api/stats | head
 
 Then browse to `http://<pi-host>:8080/` on the LAN.
 
+### Deploying a Mac-built image (no build on the Pi)
+
+Building on the Pi currently fails because BuildKit's build network can't
+reach the Alpine package CDN (IPv6/DNS quirk on the WAN uplink). Workaround
+is to build on the Mac, load the image directly onto the Pi over SSH, and
+start the container remotely without needing the git repo on the Pi.
+
+One-shot from the Mac:
+
+```
+make deploy        # docker-build + ship + engage
+```
+
+Or in steps:
+
+```
+make docker-build       # build pispot-ui:latest locally (linux/arm64)
+make ship               # save/gzip/ssh/docker-load onto the Pi
+make engage             # ssh to Pi, pipe docker-compose.yml, up -d --no-build
+```
+
+`make ship` and `make engage` both target `PI_HOST=n1qzs-radios.local`.
+Override on the command line if needed:
+
+```
+make deploy PI_HOST=some-other-host.local
+```
+
+`make engage` pipes `docker-compose.yml` over SSH and runs
+`docker compose -f - --project-name pispot-ui up -d --no-build` on the
+Pi, so the Pi needs nothing locally except the loaded Docker image — no
+git checkout, no compose file on disk. The project name is pinned to
+`pispot-ui` so compose reconciles with any container left over from an
+earlier git-clone-based deployment.
+
+Restoring a pure `git pull && docker compose up -d --build` workflow on
+the Pi is deferred until the Pi-side build issue is resolved.
+
 ## Configuration
 
 All via environment variables (see `.env.example`). Defaults in
