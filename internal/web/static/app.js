@@ -151,16 +151,10 @@
     linkEl.textContent = a.link ? "up" : "down";
     setClass(linkEl, a.link ? "ok" : null); // down on admin is not "bad" — neutral
     $("admin-ip").textContent = a.ip || "-";
-    // Gateway on eth0 is expected to always be empty on this Pi: eth0
-    // is administration-only and must not carry a default route. A
-    // non-empty value indicates a routing-table anomaly and is flagged
-    // in red with a hover hint.
-    const gwEl = $("admin-gw");
-    gwEl.textContent = a.gateway || "-";
-    setClass(gwEl, a.gateway ? "bad" : null);
-    gwEl.title = a.gateway
-      ? "eth0 should never have a default route; investigate"
-      : "";
+    // eth0 is dual-purpose (Admin / Backup WAN). It legitimately holds a
+    // default route when wlan1 is down and DHCP supplied a gateway, so
+    // the Gateway field is rendered as a normal value with no warning.
+    $("admin-gw").textContent = a.gateway || "-";
     $("admin-error").textContent = a.error || "";
   }
 

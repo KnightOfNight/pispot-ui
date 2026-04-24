@@ -44,8 +44,7 @@ Visual signals used on the dashboard:
 | Hotspot Signal     | colored dBm                  | Client RSSI colored green / amber / red by the thresholds in `app.js` (only populated on drivers that report it).                                 |
 | WAN Connected      | green `yes` / red `no`       | Whether the WAN interface is currently associated to an AP.                                                                                       |
 | WAN Signal         | colored dBm                  | Upstream link RSSI colored by the thresholds in `app.js`.                                                                                         |
-| Admin Link         | green `up` / neutral `down`  | eth0 operstate. Link-down is not an error on an admin-only port.                                                                                  |
-| **Admin Gateway**  | **red value**                | **eth0 must never hold a default route on this Pi.** A non-empty value means the routing table has an unexpected entry — the wired admin port could be acting as WAN egress. Investigate with `ip route show default`. |
+| Admin Link         | green `up` / neutral `down`  | eth0 operstate. eth0 is dual-purpose (Admin / Backup WAN); link-down is not an error.                                                             |
 | System Throttled   | red `yes (inferred)`         | SoC temperature is at or above the 80 °C soft-throttle threshold. Inferred from sysfs temperature, not the firmware throttle flag (which requires `vcgencmd`). |
 | Footer `dirty` tag | red tag                      | The running binary was built from a working tree with uncommitted or untracked changes.                                                           |
 
