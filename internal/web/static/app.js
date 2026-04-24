@@ -100,12 +100,18 @@
       tbody.innerHTML = `<tr><td colspan="7" class="sub">no clients</td></tr>`;
     } else {
       tbody.innerHTML = h.clients.map((c) => {
-        const sigCls = classifyLow(c.signal_dbm, THRESHOLDS.clientSignal);
+        // Some Wi-Fi drivers (notably brcmfmac on Pi 5 built-in wireless
+        // in AP mode) do not report per-station signal in the station
+        // dump. The server emits 0 in that case; render it as N/A so
+        // the cell reads as "unavailable" rather than a bogus value.
+        const hasSignal = c.signal_dbm !== 0;
+        const sigCls = hasSignal ? classifyLow(c.signal_dbm, THRESHOLDS.clientSignal) : "";
+        const sigText = hasSignal ? c.signal_dbm : "N/A";
         return `<tr>
           <td class="mono">${c.mac || "-"}</td>
           <td class="mono">${c.ip || "-"}</td>
           <td>${c.hostname || "-"}</td>
-          <td class="num ${sigCls}">${c.signal_dbm}</td>
+          <td class="num ${sigCls}">${sigText}</td>
           <td class="num">${fmtDuration(c.connected_seconds)}</td>
           <td class="num">${fmtBytes(c.rx_bytes)}</td>
           <td class="num">${fmtBytes(c.tx_bytes)}</td>
