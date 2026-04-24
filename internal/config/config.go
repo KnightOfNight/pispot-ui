@@ -14,7 +14,6 @@ type Config struct {
 	ProcPath   string
 	SysPath    string
 	LeasesPath string
-	Version    string
 }
 
 // Load reads configuration from environment variables, applying defaults
@@ -28,7 +27,6 @@ func Load() Config {
 		ProcPath:   getenv("PROC_PATH", "/proc"),
 		SysPath:    getenv("SYS_PATH", "/sys"),
 		LeasesPath: getenv("LEASES_PATH", "/var/lib/misc/dnsmasq.leases"),
-		Version:    getenv("PISPOT_VERSION", "0.1.0"),
 	}
 }
 

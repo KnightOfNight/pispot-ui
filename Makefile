@@ -12,6 +12,22 @@ IMAGE      := pispot-ui:latest
 # emulation, but we set --platform explicitly so local and Pi builds match.
 PLATFORM   := linux/arm64
 
+# Build identity injected via -ldflags -X into internal/buildinfo. These
+# default to "unknown" when git is unavailable (shallow clones, tarball
+# extractions, etc.) so the resulting binary is still runnable.
+#
+# DIRTY uses git status --porcelain (strict): any untracked, modified, or
+# staged change flips the flag. BUILD_TIME is RFC3339 UTC.
+COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+DIRTY      := $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo false || echo true)
+BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+BUILDINFO_PKG := github.com/mcs-net/pispot-ui/internal/buildinfo
+LDFLAGS       := -s -w \
+                 -X $(BUILDINFO_PKG).Commit=$(COMMIT) \
+                 -X $(BUILDINFO_PKG).Dirty=$(DIRTY) \
+                 -X $(BUILDINFO_PKG).BuildTime=$(BUILD_TIME)
+
 # Pi SSH target for `make ship`. Override on the command line if needed:
 #   make ship PI_HOST=other-host.local
 PI_HOST    := n1qzs-radios.local
@@ -38,7 +54,7 @@ help:
 	@echo "  clean         Remove local build artifacts"
 
 build:
-	go build -trimpath -ldflags="-s -w" -o bin/$(BINARY) $(PKG)
+	go build -trimpath -ldflags="$(LDFLAGS)" -o bin/$(BINARY) $(PKG)
 
 test:
 	go test ./...
@@ -60,7 +76,11 @@ run-local: build
 	./bin/$(BINARY)
 
 docker-build:
-	docker build --platform $(PLATFORM) -t $(IMAGE) .
+	docker build --platform $(PLATFORM) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg DIRTY=$(DIRTY) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(IMAGE) .
 
 image-size:
 	@docker image inspect $(IMAGE) --format '{{.Size}}' 2>/dev/null \

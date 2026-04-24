@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mcs-net/pispot-ui/internal/admin"
+	"github.com/mcs-net/pispot-ui/internal/buildinfo"
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
@@ -68,7 +69,9 @@ type Admin struct {
 type Meta struct {
 	Hostname      string `json:"hostname"`
 	UptimeSeconds int64  `json:"uptime_seconds"`
-	Version       string `json:"version"`
+	Commit        string `json:"commit"`
+	Dirty         bool   `json:"dirty"`
+	BuildTime     string `json:"build_time"`
 	Stub          bool   `json:"stub"`
 }
 
@@ -233,7 +236,9 @@ func (s *Server) Stats() http.HandlerFunc {
 			Meta: Meta{
 				Hostname:      host,
 				UptimeSeconds: int64(time.Since(s.started).Seconds()),
-				Version:       s.cfg.Version,
+				Commit:        buildinfo.Commit,
+				Dirty:         buildinfo.IsDirty(),
+				BuildTime:     buildinfo.BuildTime,
 				Stub:          false,
 			},
 		}

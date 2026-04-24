@@ -156,10 +156,12 @@
   }
 
   function renderMeta(m) {
-    $("meta-host").textContent    = m.hostname || "-";
-    $("meta-uptime").textContent  = fmtDuration(m.uptime_seconds);
-    $("meta-version").textContent = m.version || "-";
-    $("meta-stub").hidden = !m.stub;
+    $("meta-host").textContent      = m.hostname || "-";
+    $("meta-uptime").textContent    = fmtDuration(m.uptime_seconds);
+    $("meta-commit").textContent    = m.commit || "-";
+    $("meta-buildtime").textContent = m.build_time || "-";
+    $("meta-dirty").hidden          = !m.dirty;
+    $("meta-stub").hidden           = !m.stub;
   }
 
   function render(data) {

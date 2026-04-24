@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcs-net/pispot-ui/internal/admin"
 	"github.com/mcs-net/pispot-ui/internal/api"
+	"github.com/mcs-net/pispot-ui/internal/buildinfo"
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
@@ -53,8 +54,9 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("pispot-ui %s listening on %s (hotspot=%s wan=%s admin=%s)",
-			cfg.Version, cfg.ListenAddr, cfg.HotspotIf, cfg.WANIf, cfg.AdminIf)
+		log.Printf("pispot-ui %s (%s) listening on %s (hotspot=%s wan=%s admin=%s)",
+			buildinfo.Commit, buildinfo.BuildTime,
+			cfg.ListenAddr, cfg.HotspotIf, cfg.WANIf, cfg.AdminIf)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("listen: %v", err)
 		}

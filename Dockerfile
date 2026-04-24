@@ -5,6 +5,13 @@ FROM golang:1.26-alpine AS build
 
 WORKDIR /src
 
+# Build identity, supplied by `make docker-build` (which in turn reads
+# git state on the host). Defaults to "unknown"/"false" so ad-hoc
+# `docker build .` invocations still produce a runnable binary.
+ARG COMMIT=unknown
+ARG DIRTY=false
+ARG BUILD_TIME=unknown
+
 # Copy module files first to leverage layer caching.
 COPY go.mod ./
 # go.sum copied if/when dependencies are added.
@@ -16,10 +23,17 @@ RUN go mod download
 # Copy the rest of the source (including embedded web assets).
 COPY . .
 
-# Static, trimmed, stripped binary.
+# Static, trimmed, stripped binary. Build identity is injected via
+# -ldflags -X into internal/buildinfo so the running instance reports
+# the exact commit it was built from.
 ENV CGO_ENABLED=0 \
     GOOS=linux
-RUN go build -trimpath -ldflags="-s -w" -o /out/pispot-ui ./cmd/pispot-ui
+RUN go build -trimpath \
+      -ldflags="-s -w \
+        -X github.com/mcs-net/pispot-ui/internal/buildinfo.Commit=${COMMIT} \
+        -X github.com/mcs-net/pispot-ui/internal/buildinfo.Dirty=${DIRTY} \
+        -X github.com/mcs-net/pispot-ui/internal/buildinfo.BuildTime=${BUILD_TIME}" \
+      -o /out/pispot-ui ./cmd/pispot-ui
 
 # ---- runtime stage -------------------------------------------------------
 FROM alpine:3.20
