@@ -11,10 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mcs-net/pispot-ui/internal/admin"
 	"github.com/mcs-net/pispot-ui/internal/api"
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
+	"github.com/mcs-net/pispot-ui/internal/wan"
 	"github.com/mcs-net/pispot-ui/internal/web"
 )
 
@@ -31,11 +33,13 @@ func main() {
 	ns := netstats.New(cfg)
 	go ns.Run(ctx)
 
-	// Hotspot collector is lazy — no goroutine; refreshed on demand
-	// with its own TTL and exec timeout.
+	// Hotspot, WAN, and admin collectors are lazy — no goroutines;
+	// each refreshes on demand with its own TTL and exec timeout.
 	hs := hotspot.New(cfg)
+	wn := wan.New(cfg)
+	ad := admin.New(cfg)
 
-	srv := api.New(cfg, ns, hs)
+	srv := api.New(cfg, ns, hs, wn, ad)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(web.FS())))

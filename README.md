@@ -10,13 +10,22 @@ pispot &copy; MCS 'Net Productions 2026
 
 ## Status
 
-**M3 — hotspot clients live.** Associated stations on the hotspot
-interface come from `iw dev <iface> station dump`, enriched with IPs
-and hostnames from `/var/lib/misc/dnsmasq.leases`. The hotspot collector
-refreshes lazily with a 5 s TTL and a 2 s exec timeout; on failure the
-last-good client list is retained and the error is surfaced via
-`hotspot.error`. WAN and admin sections remain stubbed; `meta.stub`
-stays `true` until M4.
+**M4 — all sections live.** WAN link info (`iw dev <iface> link` plus
+`ip -j addr` and `ip -j route`) and admin interface (`operstate` plus
+`ip -j addr`) complete the dashboard. Every block in `/api/stats` is
+now sourced from the running system, and `meta.stub` is `false`. WAN
+disconnection (no associated AP) clears the IP/BSSID/SSID/signal/freq/
+bitrate/gateway fields so the UI never shows stale data for a link
+that is definitively not associated. All non-netstats collectors
+refresh lazily with a 5 s TTL and 2 s exec timeout; on failure the
+last-good data is retained and the error is surfaced in the
+section-level `.error` field.
+
+Hotspot-client signal note: Pi 5 built-in wireless (`brcmfmac` driver)
+does not expose per-station RSSI in AP mode, so hotspot client signal
+reads as `N/A` in the UI. A USB Wi-Fi adapter with a driver that
+exposes signal via `iw station dump` would populate the column
+automatically without further changes.
 
 ## Architecture
 

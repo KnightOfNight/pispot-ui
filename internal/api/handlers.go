@@ -7,9 +7,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/mcs-net/pispot-ui/internal/admin"
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
+	"github.com/mcs-net/pispot-ui/internal/wan"
 )
 
 // Interface holds per-interface throughput and totals.
@@ -86,13 +88,74 @@ type Server struct {
 	started  time.Time
 	netstats *netstats.Collector
 	hotspot  *hotspot.Collector
+	wan      *wan.Collector
+	admin    *admin.Collector
 }
 
 // New returns a Server configured with cfg and the given collectors.
-// The netstats collector is expected to be running; the hotspot
-// collector is queried on demand and refreshes itself lazily.
-func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector) *Server {
-	return &Server{cfg: cfg, started: time.Now(), netstats: ns, hotspot: hs}
+// The netstats collector is expected to already be running in its own
+// goroutine; hotspot, wan, and admin collectors refresh lazily on read.
+func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector, wn *wan.Collector, ad *admin.Collector) *Server {
+	return &Server{
+		cfg:      cfg,
+		started:  time.Now(),
+		netstats: ns,
+		hotspot:  hs,
+		wan:      wn,
+		admin:    ad,
+	}
+}
+
+// wanFromCollector builds the JSON-facing WAN struct from the wan
+// collector's latest snapshot. Last-good data is preserved on error
+// and the error text is surfaced via WAN.Error.
+func (s *Server) wanFromCollector(r *http.Request) WAN {
+	out := WAN{Interface: s.cfg.WANIf}
+	if s.wan == nil {
+		return out
+	}
+	snap := s.wan.Snapshot(r.Context())
+	if snap == nil {
+		return out
+	}
+	info := snap.Info
+	out = WAN{
+		Interface:     info.Interface,
+		Connected:     info.Connected,
+		SSID:          info.SSID,
+		BSSID:         info.BSSID,
+		SignalDBm:     info.SignalDBm,
+		FreqMHz:       info.FreqMHz,
+		TxBitrateMbps: info.TxBitrateMbps,
+		IP:            info.IP,
+		Gateway:       info.Gateway,
+	}
+	if snap.Err != nil {
+		out.Error = snap.Err.Error()
+	}
+	return out
+}
+
+// adminFromCollector builds the JSON-facing Admin struct from the admin
+// collector's latest snapshot.
+func (s *Server) adminFromCollector(r *http.Request) Admin {
+	out := Admin{Interface: s.cfg.AdminIf}
+	if s.admin == nil {
+		return out
+	}
+	snap := s.admin.Snapshot(r.Context())
+	if snap == nil {
+		return out
+	}
+	out = Admin{
+		Interface: snap.Info.Interface,
+		IP:        snap.Info.IP,
+		Link:      snap.Info.Link,
+	}
+	if snap.Err != nil {
+		out.Error = snap.Err.Error()
+	}
+	return out
 }
 
 // hotspotFromCollector builds the JSON-facing Hotspot struct from the
@@ -155,10 +218,9 @@ func (s *Server) interfacesFromNetstats() map[string]Interface {
 	return out
 }
 
-// Stats returns the /api/stats handler. Interfaces (M2) and hotspot
-// clients (M3) are live; WAN and admin sections remain stub data until
-// M4. Meta.Stub stays true while any section is stubbed so the dashboard
-// can flag mixed-truth responses.
+// Stats returns the /api/stats handler. All four sections are live as
+// of M4: interfaces throughput (M2), hotspot clients (M3), WAN link
+// info, and admin interface (M4). Meta.Stub is false.
 func (s *Server) Stats() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
@@ -166,27 +228,13 @@ func (s *Server) Stats() http.HandlerFunc {
 			Timestamp:  time.Now().Unix(),
 			Interfaces: s.interfacesFromNetstats(),
 			Hotspot:    s.hotspotFromCollector(r),
-			WAN: WAN{
-				Interface:     s.cfg.WANIf,
-				Connected:     true,
-				SSID:          "CoffeeShop-5G",
-				BSSID:         "11:22:33:44:55:66",
-				SignalDBm:     -62,
-				FreqMHz:       5180,
-				TxBitrateMbps: 150.0,
-				IP:            "192.168.1.42",
-				Gateway:       "192.168.1.1",
-			},
-			Admin: Admin{
-				Interface: s.cfg.AdminIf,
-				IP:        "169.254.10.5",
-				Link:      false,
-			},
+			WAN:        s.wanFromCollector(r),
+			Admin:      s.adminFromCollector(r),
 			Meta: Meta{
 				Hostname:      host,
 				UptimeSeconds: int64(time.Since(s.started).Seconds()),
 				Version:       s.cfg.Version,
-				Stub:          true,
+				Stub:          false,
 			},
 		}
 
