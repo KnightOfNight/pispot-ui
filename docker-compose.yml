@@ -1,0 +1,37 @@
+services:
+  pispot-ui:
+    build: .
+    image: pispot-ui:latest
+    container_name: pispot-ui
+    restart: unless-stopped
+
+    # Host networking so we see wlan0/wlan1/eth0 directly and can listen
+    # on :8080 on all of them. pid host lets iw resolve processes cleanly.
+    network_mode: host
+    pid: host
+
+    # Minimal privileges: drop all capabilities, add back only NET_ADMIN
+    # which `iw` needs to query station and link info.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+
+    # Read-only rootfs with a writable tmpfs for any scratch needs.
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/lib/misc/dnsmasq.leases:/host/dnsmasq.leases:ro
+
+    environment:
+      LISTEN_ADDR: ":8080"
+      HOTSPOT_IF:  "wlan0"
+      WAN_IF:      "wlan1"
+      ADMIN_IF:    "eth0"
+      PROC_PATH:   "/host/proc"
+      SYS_PATH:    "/host/sys"
+      LEASES_PATH: "/host/dnsmasq.leases"
