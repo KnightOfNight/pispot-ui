@@ -42,7 +42,7 @@ func main() {
 	srv := api.New(cfg, ns, hs, wn, ad)
 
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(web.FS())))
+	mux.Handle("/", noCacheStatic(http.FileServer(http.FS(web.FS()))))
 	mux.HandleFunc("/api/stats", srv.Stats())
 	mux.HandleFunc("/healthz", srv.Healthz())
 
@@ -69,6 +69,21 @@ func main() {
 		log.Printf("shutdown error: %v", err)
 		os.Exit(1)
 	}
+}
+
+// noCacheStatic sets Cache-Control: no-cache, must-revalidate on every
+// response so browsers always revalidate embedded assets (index.html,
+// app.js, style.css) before reusing a cached copy. Go's http.FileServer
+// emits ETag/Last-Modified for embedded files, so revalidation usually
+// completes with a cheap 304 Not Modified when the content is unchanged.
+//
+// This prevents stale frontend behavior after a deploy — a class of bug
+// that is otherwise silent and hard to diagnose.
+func noCacheStatic(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		h.ServeHTTP(w, r)
+	})
 }
 
 // logRequests emits one line per request with method, path, status, and duration.

@@ -114,6 +114,12 @@ section h2 {
 .warn { color: var(--warn); }
 .bad  { color: var(--bad); }
 
+/* Ensure the HTML `hidden` attribute always wins the specificity battle
+   against class-based `display` rules (e.g. `.tag { display: inline-block }`).
+   Without this, toggling `el.hidden = true` from JS can appear to do
+   nothing when the element also carries a class that sets `display`. */
+[hidden] { display: none !important; }
+
 table {
   width: 100%;
   border-collapse: collapse;
