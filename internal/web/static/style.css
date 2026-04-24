@@ -60,17 +60,7 @@ html, body {
   font-size: 13px;
 }
 
-.dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--muted);
-}
 
-.dot.ok   { background: var(--ok); }
-.dot.warn { background: var(--warn); }
-.dot.bad  { background: var(--bad); }
 
 main {
   max-width: 1100px;
@@ -129,7 +119,7 @@ section h2 {
   margin-bottom: 8px;
 }
 
-.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fg); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
 
 .ok   { color: var(--ok); }
@@ -207,6 +197,13 @@ footer {
   background: var(--bad);
   color: #fff;
 }
+
+/* Status-pill variants (used by the connection indicator in the
+   top bar). tag-warn intentionally matches the default .tag look;
+   it is declared explicitly for symmetry when the JS swaps variants. */
+.tag.tag-ok   { background: var(--ok);   color: #000; }
+.tag.tag-warn { background: var(--warn); color: #000; }
+.tag.tag-bad  { background: var(--bad);  color: #fff; }
 
 @media (max-width: 600px) {
   .topbar h1 { font-size: 15px; }

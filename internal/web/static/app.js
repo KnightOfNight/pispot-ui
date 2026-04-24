@@ -6,7 +6,6 @@
   const THRESHOLDS = {
     wanSignal:     { warn: -60, bad: -75 },   // WAN dBm (less-negative = better)
     clientSignal:  { warn: -65, bad: -80 },   // client dBm
-    clientCount:   { warn: 10,  bad: 20 },    // hotspot client count
   };
 
   const DEFAULT_INTERVAL = 3;
@@ -94,7 +93,7 @@
     $("hotspot-iface").textContent = h.interface ? `(${h.interface})` : "";
     const countEl = $("hotspot-count");
     countEl.textContent = h.client_count;
-    setClass(countEl, classifyHigh(h.client_count, THRESHOLDS.clientCount));
+    // Count renders in the default .num color; no threshold coloring.
     const tbody = $("hotspot-rows");
     if (!h.clients || h.clients.length === 0) {
       tbody.innerHTML = `<tr><td colspan="7" class="sub">no clients</td></tr>`;
@@ -237,17 +236,29 @@
   let timer = null;
   let currentInterval = DEFAULT_INTERVAL;
 
+  function setStatus(state, title) {
+    const el = $("status-label");
+    if (!el) return;
+    el.classList.remove("tag-ok", "tag-warn", "tag-bad");
+    let text;
+    switch (state) {
+      case "ok":   text = "ONLINE";  el.classList.add("tag-ok");   break;
+      case "bad":  text = "OFFLINE"; el.classList.add("tag-bad");  break;
+      default:     text = "WAITING"; el.classList.add("tag-warn"); break;
+    }
+    el.textContent = text;
+    el.title = title || "";
+  }
+
   async function tick() {
     try {
       const r = await fetch("/api/stats", { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       render(data);
-      setClass($("status-dot"), "ok");
-      $("status-dot").title = "connected";
+      setStatus("ok", "connected");
     } catch (e) {
-      setClass($("status-dot"), "bad");
-      $("status-dot").title = `error: ${e.message}`;
+      setStatus("bad", `error: ${e.message}`);
     }
   }
 
