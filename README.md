@@ -10,11 +10,13 @@ pispot &copy; MCS 'Net Productions 2026
 
 ## Status
 
-**M2 — live throughput.** Per-interface Mbps and totals come from a
-background collector that samples `/proc/net/dev` and
-`/sys/class/net/<iface>/operstate` every 1 s. Hotspot clients, WAN SSID,
-and admin interface details remain stubbed; `meta.stub` stays `true`
-until those sections go live (M3/M4).
+**M3 — hotspot clients live.** Associated stations on the hotspot
+interface come from `iw dev <iface> station dump`, enriched with IPs
+and hostnames from `/var/lib/misc/dnsmasq.leases`. The hotspot collector
+refreshes lazily with a 5 s TTL and a 2 s exec timeout; on failure the
+last-good client list is retained and the error is surfaced via
+`hotspot.error`. WAN and admin sections remain stubbed; `meta.stub`
+stays `true` until M4.
 
 ## Architecture
 

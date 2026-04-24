@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcs-net/pispot-ui/internal/api"
 	"github.com/mcs-net/pispot-ui/internal/config"
+	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
 	"github.com/mcs-net/pispot-ui/internal/web"
 )
@@ -30,7 +31,11 @@ func main() {
 	ns := netstats.New(cfg)
 	go ns.Run(ctx)
 
-	srv := api.New(cfg, ns)
+	// Hotspot collector is lazy — no goroutine; refreshed on demand
+	// with its own TTL and exec timeout.
+	hs := hotspot.New(cfg)
+
+	srv := api.New(cfg, ns, hs)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(web.FS())))

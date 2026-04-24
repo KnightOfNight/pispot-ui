@@ -4,7 +4,6 @@
 
   // Red/green thresholds. Tune here; may move to /api/config later.
   const THRESHOLDS = {
-    ifaceMbps:     { warn: 50,  bad: 100 },   // interface throughput
     wanSignal:     { warn: -60, bad: -75 },   // WAN dBm (less-negative = better)
     clientSignal:  { warn: -65, bad: -80 },   // client dBm
     clientCount:   { warn: 10,  bad: 20 },    // hotspot client count
@@ -75,25 +74,20 @@
 
   function renderInterfaces(interfaces) {
     const tbody = $("iface-rows");
-    const roleMap = {}; // filled from meta below; we don't have it here yet
     const keys = Object.keys(interfaces);
     const rows = keys.map((name) => {
       const i = interfaces[name];
-      const rxCls = classifyHigh(i.rx_mbps, THRESHOLDS.ifaceMbps);
-      const txCls = classifyHigh(i.tx_mbps, THRESHOLDS.ifaceMbps);
       const upCls = i.up ? "ok" : "bad";
-      const role = roleMap[name] || "";
       return `<tr>
         <td class="mono">${name}</td>
-        <td>${role}</td>
         <td class="num ${upCls}">${i.up ? "up" : "down"}</td>
-        <td class="num ${rxCls}">${fmtMbps(i.rx_mbps)}</td>
-        <td class="num ${txCls}">${fmtMbps(i.tx_mbps)}</td>
+        <td class="num">${fmtMbps(i.rx_mbps)}</td>
+        <td class="num">${fmtMbps(i.tx_mbps)}</td>
         <td class="num">${fmtBytes(i.rx_total_bytes)}</td>
         <td class="num">${fmtBytes(i.tx_total_bytes)}</td>
       </tr>`;
     }).join("");
-    tbody.innerHTML = rows || `<tr><td colspan="7" class="error">no interfaces</td></tr>`;
+    tbody.innerHTML = rows || `<tr><td colspan="6" class="error">no interfaces</td></tr>`;
   }
 
   function renderHotspot(h) {

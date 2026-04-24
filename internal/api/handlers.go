@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mcs-net/pispot-ui/internal/config"
+	"github.com/mcs-net/pispot-ui/internal/hotspot"
 	"github.com/mcs-net/pispot-ui/internal/netstats"
 )
 
@@ -84,13 +85,48 @@ type Server struct {
 	cfg      config.Config
 	started  time.Time
 	netstats *netstats.Collector
+	hotspot  *hotspot.Collector
 }
 
-// New returns a Server configured with cfg and the given netstats
-// collector. The collector is expected to already be running (or about
-// to be started); the Server reads snapshots from it on demand.
-func New(cfg config.Config, ns *netstats.Collector) *Server {
-	return &Server{cfg: cfg, started: time.Now(), netstats: ns}
+// New returns a Server configured with cfg and the given collectors.
+// The netstats collector is expected to be running; the hotspot
+// collector is queried on demand and refreshes itself lazily.
+func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector) *Server {
+	return &Server{cfg: cfg, started: time.Now(), netstats: ns, hotspot: hs}
+}
+
+// hotspotFromCollector builds the JSON-facing Hotspot struct from the
+// hotspot collector's latest snapshot. On collector error the error
+// text is surfaced in Hotspot.Error while the last-good client list is
+// still returned.
+func (s *Server) hotspotFromCollector(r *http.Request) Hotspot {
+	out := Hotspot{
+		Interface: s.cfg.HotspotIf,
+		Clients:   []HotspotClient{},
+	}
+	if s.hotspot == nil {
+		return out
+	}
+	snap := s.hotspot.Snapshot(r.Context())
+	if snap == nil {
+		return out
+	}
+	for _, c := range snap.Clients {
+		out.Clients = append(out.Clients, HotspotClient{
+			MAC:              c.MAC,
+			IP:               c.IP,
+			Hostname:         c.Hostname,
+			SignalDBm:        c.SignalDBm,
+			ConnectedSeconds: c.ConnectedSeconds,
+			RxBytes:          c.RxBytes,
+			TxBytes:          c.TxBytes,
+		})
+	}
+	out.ClientCount = len(out.Clients)
+	if snap.Err != nil {
+		out.Error = snap.Err.Error()
+	}
+	return out
 }
 
 // interfacesFromNetstats builds the JSON-facing Interface map from the
@@ -119,24 +155,17 @@ func (s *Server) interfacesFromNetstats() map[string]Interface {
 	return out
 }
 
-// Stats returns the /api/stats handler. Interfaces are live (M2); the
-// hotspot/WAN/admin sections remain stub data until their respective
-// milestones (M3/M4) land. Meta.Stub stays true while any section is
-// stubbed so the dashboard can flag mixed-truth responses.
+// Stats returns the /api/stats handler. Interfaces (M2) and hotspot
+// clients (M3) are live; WAN and admin sections remain stub data until
+// M4. Meta.Stub stays true while any section is stubbed so the dashboard
+// can flag mixed-truth responses.
 func (s *Server) Stats() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
 		stats := Stats{
 			Timestamp:  time.Now().Unix(),
 			Interfaces: s.interfacesFromNetstats(),
-			Hotspot: Hotspot{
-				Interface:   s.cfg.HotspotIf,
-				ClientCount: 2,
-				Clients: []HotspotClient{
-					{MAC: "aa:bb:cc:dd:ee:01", IP: "10.42.0.23", Hostname: "phone-01", SignalDBm: -55, ConnectedSeconds: 1234, RxBytes: 5_000_000, TxBytes: 1_500_000},
-					{MAC: "aa:bb:cc:dd:ee:02", IP: "10.42.0.24", Hostname: "laptop-02", SignalDBm: -72, ConnectedSeconds: 300, RxBytes: 250_000, TxBytes: 90_000},
-				},
-			},
+			Hotspot:    s.hotspotFromCollector(r),
 			WAN: WAN{
 				Interface:     s.cfg.WANIf,
 				Connected:     true,
