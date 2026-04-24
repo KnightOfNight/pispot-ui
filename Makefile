@@ -44,7 +44,7 @@ help:
 	@echo "  vet           go vet"
 	@echo "  fmt           gofmt -w on all Go files"
 	@echo "  tidy          go mod tidy (keep go directive at 1.26)"
-	@echo "  run-local     Build and run locally; API returns stub data"
+	@echo "  run-local     Build and run locally; collectors will fail on non-Linux hosts"
 	@echo "  docker-build  Build the container image locally (linux/arm64)"
 	@echo "  image-size    Print the size of the local image"
 	@echo "  ship          Save local image and load it on the Pi ($(PI_HOST))"

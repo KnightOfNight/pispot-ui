@@ -87,7 +87,6 @@ type Meta struct {
 	Commit        string `json:"commit"`
 	Dirty         bool   `json:"dirty"`
 	BuildTime     string `json:"build_time"`
-	Stub          bool   `json:"stub"`
 }
 
 // Stats is the top-level response payload for GET /api/stats.
@@ -269,7 +268,7 @@ func (s *Server) interfacesFromNetstats() map[string]Interface {
 
 // Stats returns the /api/stats handler. All four sections are live as
 // of M4: interfaces throughput (M2), hotspot clients (M3), WAN link
-// info, and admin interface (M4). Meta.Stub is false.
+// info, and admin interface (M4).
 func (s *Server) Stats() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
@@ -286,7 +285,6 @@ func (s *Server) Stats() http.HandlerFunc {
 				Commit:        buildinfo.Commit,
 				Dirty:         buildinfo.IsDirty(),
 				BuildTime:     buildinfo.BuildTime,
-				Stub:          false,
 			},
 		}
 

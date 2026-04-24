@@ -19,19 +19,35 @@ a single row of equal thirds below the Interfaces and Hotspot tables.
 **M4 — all network sections live.** WAN link info (`iw dev <iface>
 link` plus `ip -j addr` and `ip -j route`) and admin interface
 (`operstate` plus `ip -j addr`) complete the dashboard. Every block in
-`/api/stats` is now sourced from the running system, and `meta.stub`
-is `false`. WAN disconnection (no associated AP) clears the
-IP/BSSID/SSID/signal/freq/bitrate/gateway fields so the UI never shows
-stale data for a link that is definitively not associated. All
-non-netstats collectors refresh lazily with a 5 s TTL and 2 s exec
-timeout; on failure the last-good data is retained and the error is
-surfaced in the section-level `.error` field.
+`/api/stats` is sourced from the running system. WAN disconnection (no
+associated AP) clears the IP/BSSID/SSID/signal/freq/bitrate/gateway
+fields so the UI never shows stale data for a link that is
+definitively not associated. All non-netstats collectors refresh
+lazily with a 1 s TTL and 2 s exec timeout; on failure the last-good
+data is retained and the error is surfaced in the section-level
+`.error` field.
 
 Hotspot-client signal note: Pi 5 built-in wireless (`brcmfmac` driver)
 does not expose per-station RSSI in AP mode, so hotspot client signal
 reads as `N/A` in the UI. A USB Wi-Fi adapter with a driver that
 exposes signal via `iw station dump` would populate the column
 automatically without further changes.
+
+## UI notes
+
+Visual signals used on the dashboard:
+
+| Where              | State                        | Meaning                                                                                                                                           |
+|--------------------|------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| Interfaces Up      | green `up` / red `down`      | Kernel operstate for that interface.                                                                                                              |
+| Hotspot Signal     | `N/A`                        | Driver does not expose per-station RSSI (Pi 5 built-in `brcmfmac` in AP mode).                                                                    |
+| Hotspot Signal     | colored dBm                  | Client RSSI colored green / amber / red by the thresholds in `app.js` (only populated on drivers that report it).                                 |
+| WAN Connected      | green `yes` / red `no`       | Whether the WAN interface is currently associated to an AP.                                                                                       |
+| WAN Signal         | colored dBm                  | Upstream link RSSI colored by the thresholds in `app.js`.                                                                                         |
+| Admin Link         | green `up` / neutral `down`  | eth0 operstate. Link-down is not an error on an admin-only port.                                                                                  |
+| **Admin Gateway**  | **red value**                | **eth0 must never hold a default route on this Pi.** A non-empty value means the routing table has an unexpected entry — the wired admin port could be acting as WAN egress. Investigate with `ip route show default`. |
+| System Throttled   | red `yes (inferred)`         | SoC temperature is at or above the 80 °C soft-throttle threshold. Inferred from sysfs temperature, not the firmware throttle flag (which requires `vcgencmd`). |
+| Footer `dirty` tag | red tag                      | The running binary was built from a working tree with uncommitted or untracked changes.                                                           |
 
 ## Architecture
 
@@ -71,14 +87,15 @@ internal/admin       (M4) eth0 link/IP
 ```
 make build          # compile sanity check
 make vet            # go vet
-make test           # unit tests (added with M2+)
+make test           # unit tests
 make docker-build   # build the linux/arm64 image locally
-make run-local      # run the binary on the Mac; API returns stub data
+make run-local      # run the binary on the Mac; collectors fail on non-Linux
 ```
 
-`run-local` serves `http://localhost:8080/` using stub JSON — useful for
-iterating on the frontend without the Pi. Live system data requires the
-container on the Pi (host networking + /proc access).
+`run-local` serves `http://localhost:8080/`, but the collectors rely on
+Linux `/proc`, `/sys`, `iw`, and `ip` which aren't present on macOS —
+expect empty values and populated `.error` fields on every section.
+Live system data requires the container on the Pi.
 
 ## Deployment (Pi)
 

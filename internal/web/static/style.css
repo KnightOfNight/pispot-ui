@@ -201,8 +201,8 @@ footer {
   letter-spacing: 0.5px;
 }
 
-/* `dirty` build marker — red to draw the eye, distinct from the yellow
-   STUB badge used for in-progress stub data. */
+/* `dirty` build marker — red to draw the eye, distinct from the
+   default yellow .tag used elsewhere. */
 .tag.tag-dirty {
   background: var(--bad);
   color: #fff;

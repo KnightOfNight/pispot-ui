@@ -152,7 +152,16 @@
     linkEl.textContent = a.link ? "up" : "down";
     setClass(linkEl, a.link ? "ok" : null); // down on admin is not "bad" — neutral
     $("admin-ip").textContent = a.ip || "-";
-    $("admin-gw").textContent = a.gateway || "-";
+    // Gateway on eth0 is expected to always be empty on this Pi: eth0
+    // is administration-only and must not carry a default route. A
+    // non-empty value indicates a routing-table anomaly and is flagged
+    // in red with a hover hint.
+    const gwEl = $("admin-gw");
+    gwEl.textContent = a.gateway || "-";
+    setClass(gwEl, a.gateway ? "bad" : null);
+    gwEl.title = a.gateway
+      ? "eth0 should never have a default route; investigate"
+      : "";
     $("admin-error").textContent = a.error || "";
   }
 
@@ -212,7 +221,6 @@
     $("meta-commit").textContent    = m.commit || "-";
     $("meta-buildtime").textContent = m.build_time || "-";
     $("meta-dirty").hidden          = !m.dirty;
-    $("meta-stub").hidden           = !m.stub;
   }
 
   function render(data) {
