@@ -10,10 +10,11 @@ pispot &copy; MCS 'Net Productions 2026
 
 ## Status
 
-**M1 — scaffold.** The API returns stub data so the frontend contract and
-Docker packaging can be validated end-to-end before live collectors are
-wired in. Subsequent milestones (M2–M5) add throughput, hotspot client
-enumeration, WAN SSID, and polish.
+**M2 — live throughput.** Per-interface Mbps and totals come from a
+background collector that samples `/proc/net/dev` and
+`/sys/class/net/<iface>/operstate` every 1 s. Hotspot clients, WAN SSID,
+and admin interface details remain stubbed; `meta.stub` stays `true`
+until those sections go live (M3/M4).
 
 ## Architecture
 

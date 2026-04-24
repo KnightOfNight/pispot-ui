@@ -13,13 +13,24 @@ import (
 
 	"github.com/mcs-net/pispot-ui/internal/api"
 	"github.com/mcs-net/pispot-ui/internal/config"
+	"github.com/mcs-net/pispot-ui/internal/netstats"
 	"github.com/mcs-net/pispot-ui/internal/web"
 )
 
 func main() {
 	cfg := config.Load()
 
-	srv := api.New(cfg)
+	// Graceful shutdown on SIGINT/SIGTERM. The context drives both the
+	// netstats collector goroutine and the HTTP server's Shutdown below.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Start the netstats collector in its own goroutine. It publishes
+	// snapshots that the API handlers read on demand.
+	ns := netstats.New(cfg)
+	go ns.Run(ctx)
+
+	srv := api.New(cfg, ns)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(web.FS())))
@@ -31,10 +42,6 @@ func main() {
 		Handler:           logRequests(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
-	// Graceful shutdown on SIGINT/SIGTERM.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		log.Printf("pispot-ui %s listening on %s (hotspot=%s wan=%s admin=%s)",

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mcs-net/pispot-ui/internal/config"
+	"github.com/mcs-net/pispot-ui/internal/netstats"
 )
 
 // Interface holds per-interface throughput and totals.
@@ -62,10 +63,10 @@ type Admin struct {
 
 // Meta holds process-level info useful for the dashboard footer/header.
 type Meta struct {
-	Hostname       string `json:"hostname"`
-	UptimeSeconds  int64  `json:"uptime_seconds"`
-	Version        string `json:"version"`
-	Stub           bool   `json:"stub"`
+	Hostname      string `json:"hostname"`
+	UptimeSeconds int64  `json:"uptime_seconds"`
+	Version       string `json:"version"`
+	Stub          bool   `json:"stub"`
 }
 
 // Stats is the top-level response payload for GET /api/stats.
@@ -80,28 +81,54 @@ type Stats struct {
 
 // Server wires configuration and startup-derived state into the HTTP handlers.
 type Server struct {
-	cfg     config.Config
-	started time.Time
+	cfg      config.Config
+	started  time.Time
+	netstats *netstats.Collector
 }
 
-// New returns a Server configured with cfg.
-func New(cfg config.Config) *Server {
-	return &Server{cfg: cfg, started: time.Now()}
+// New returns a Server configured with cfg and the given netstats
+// collector. The collector is expected to already be running (or about
+// to be started); the Server reads snapshots from it on demand.
+func New(cfg config.Config, ns *netstats.Collector) *Server {
+	return &Server{cfg: cfg, started: time.Now(), netstats: ns}
 }
 
-// Stats returns the /api/stats handler. For M1 it returns a stub payload
-// that exercises every field in the schema so the frontend can be validated
-// against the real API contract before live data is wired in.
+// interfacesFromNetstats builds the JSON-facing Interface map from the
+// collector's latest snapshot. The returned map always contains entries
+// for every interface the collector was configured to track, even if
+// the interface is currently absent from /proc/net/dev (values are then
+// zero and Up is false).
+func (s *Server) interfacesFromNetstats() map[string]Interface {
+	out := make(map[string]Interface)
+	if s.netstats == nil {
+		return out
+	}
+	snap := s.netstats.Snapshot()
+	if snap == nil {
+		return out
+	}
+	for name, v := range snap.Interfaces {
+		out[name] = Interface{
+			RxMbps:       v.RxMbps,
+			TxMbps:       v.TxMbps,
+			RxTotalBytes: v.RxTotalBytes,
+			TxTotalBytes: v.TxTotalBytes,
+			Up:           v.Up,
+		}
+	}
+	return out
+}
+
+// Stats returns the /api/stats handler. Interfaces are live (M2); the
+// hotspot/WAN/admin sections remain stub data until their respective
+// milestones (M3/M4) land. Meta.Stub stays true while any section is
+// stubbed so the dashboard can flag mixed-truth responses.
 func (s *Server) Stats() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
 		stats := Stats{
-			Timestamp: time.Now().Unix(),
-			Interfaces: map[string]Interface{
-				s.cfg.HotspotIf: {RxMbps: 12.3, TxMbps: 4.1, RxTotalBytes: 9_000_000_000, TxTotalBytes: 1_200_000_000, Up: true},
-				s.cfg.WANIf:     {RxMbps: 48.7, TxMbps: 22.1, RxTotalBytes: 15_000_000_000, TxTotalBytes: 3_400_000_000, Up: true},
-				s.cfg.AdminIf:   {RxMbps: 0.0, TxMbps: 0.0, RxTotalBytes: 120_000, TxTotalBytes: 80_000, Up: false},
-			},
+			Timestamp:  time.Now().Unix(),
+			Interfaces: s.interfacesFromNetstats(),
 			Hotspot: Hotspot{
 				Interface:   s.cfg.HotspotIf,
 				ClientCount: 2,
