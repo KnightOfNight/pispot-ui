@@ -164,8 +164,14 @@ th {
   color: var(--bad);
   font-size: 12px;
   margin-top: 8px;
+  margin-bottom: 12px;
   min-height: 1em;
 }
+
+/* Collapse the error div entirely when empty so error-free panes
+   don't reserve a phantom blank line at the same vertical position
+   as a populated error in a sibling pane. */
+.error:empty { display: none; }
 
 footer {
   max-width: 1100px;

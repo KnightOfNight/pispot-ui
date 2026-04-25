@@ -42,6 +42,28 @@
     if (cls) el.classList.add(cls);
   }
 
+  // humanizeError translates a backend error string into a UI-ready
+  // uppercase message. Known prefixes get friendly labels; unmapped
+  // strings are uppercased as-is.
+  function humanizeError(s) {
+    if (!s) return "";
+    let out;
+    if (s === "interface absent") {
+      out = "Interface not found";
+    } else if (s.startsWith("iw: ")) {
+      out = "Wireless tool error: " + s.slice(4);
+    } else if (s.startsWith("ip addr: ")) {
+      out = "Address lookup failed: " + s.slice(9);
+    } else if (s.startsWith("ip route: ")) {
+      out = "Route lookup failed: " + s.slice(10);
+    } else if (s.startsWith("leases: ")) {
+      out = "DHCP leases unreadable: " + s.slice(8);
+    } else {
+      out = s;
+    }
+    return out.toUpperCase();
+  }
+
   function fmtBytes(n) {
     if (!Number.isFinite(n)) return "-";
     const u = ["B", "KB", "MB", "GB", "TB"];
@@ -86,7 +108,7 @@
         <td class="num">${fmtBytes(i.tx_total_bytes)}</td>
       </tr>`;
     }).join("");
-    tbody.innerHTML = rows || `<tr><td colspan="6" class="error">no interfaces</td></tr>`;
+    tbody.innerHTML = rows || `<tr><td colspan="6">No interfaces</td></tr>`;
   }
 
   function renderHotspot(h) {
@@ -96,7 +118,7 @@
     // Count renders in the default .num color; no threshold coloring.
     const tbody = $("hotspot-rows");
     if (!h.clients || h.clients.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="sub">no clients</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7">No clients</td></tr>`;
     } else {
       tbody.innerHTML = h.clients.map((c) => {
         // Some Wi-Fi drivers (notably brcmfmac on Pi 5 built-in wireless
@@ -117,7 +139,7 @@
         </tr>`;
       }).join("");
     }
-    $("hotspot-error").textContent = h.error || "";
+    $("hotspot-error").textContent = humanizeError(h.error);
   }
 
   function renderWAN(w) {
@@ -142,7 +164,7 @@
     $("wan-bitrate").textContent = w.tx_bitrate_mbps ? `${w.tx_bitrate_mbps} Mbps` : "-";
     $("wan-ip").textContent      = w.ip || "-";
     $("wan-gw").textContent      = w.gateway || "-";
-    $("wan-error").textContent   = w.error || "";
+    $("wan-error").textContent   = humanizeError(w.error);
   }
 
   function renderAdmin(a) {
@@ -155,7 +177,7 @@
     // default route when wlan1 is down and DHCP supplied a gateway, so
     // the Gateway field is rendered as a normal value with no warning.
     $("admin-gw").textContent = a.gateway || "-";
-    $("admin-error").textContent = a.error || "";
+    $("admin-error").textContent = humanizeError(a.error);
   }
 
   function renderSystem(sys) {
@@ -200,7 +222,7 @@
       setClass(thEl, null);
     }
 
-    $("sys-error").textContent = sys.error || "";
+    $("sys-error").textContent = humanizeError(sys.error);
   }
 
   function fmtLoad(v) {
