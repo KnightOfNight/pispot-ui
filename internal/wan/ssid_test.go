@@ -175,7 +175,8 @@ func TestCollectorTTLAndLastGood(t *testing.T) {
 	clock := func() time.Time { return time.Unix(0, now.Load()) }
 
 	ttl := 5 * time.Second
-	c := newWithDeps("wlan1", run, clock, ttl)
+	exists := func(name string) bool { return true }
+	c := newWithDeps("wlan1", run, exists, clock, ttl)
 
 	// First Snapshot triggers a refresh; subsequent within-TTL calls don't.
 	snap := c.Snapshot(context.Background())
@@ -233,5 +234,28 @@ func TestCollectorTTLAndLastGood(t *testing.T) {
 	}
 	if snap.Info.SSID != "" || snap.Info.IP != "" || snap.Info.Gateway != "" || snap.Info.BSSID != "" {
 		t.Errorf("disconnected must clear downstream fields, got %+v", snap.Info)
+	}
+}
+
+// TestCollectorInterfaceAbsent — when the existsFunc reports the
+// configured interface is not present (e.g. USB Wi-Fi unplugged), the
+// collector must skip all execs and surface ErrInterfaceAbsent.
+func TestCollectorInterfaceAbsent(t *testing.T) {
+	run := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		t.Errorf("run should not be called when interface is absent; got %q %v", name, args)
+		return nil, errUnexpectedCall
+	}
+	exists := func(name string) bool { return false }
+	c := newWithDeps("wlan99", run, exists, time.Now, 1*time.Millisecond)
+
+	snap := c.Snapshot(context.Background())
+	if !errors.Is(snap.Err, ErrInterfaceAbsent) {
+		t.Errorf("expected ErrInterfaceAbsent, got %v", snap.Err)
+	}
+	if snap.Info.Connected {
+		t.Errorf("absent: expected Connected=false; got %+v", snap.Info)
+	}
+	if snap.Info.Interface != "wlan99" {
+		t.Errorf("absent: Interface should still be set; got %q", snap.Info.Interface)
 	}
 }

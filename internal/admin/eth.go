@@ -10,6 +10,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -26,6 +27,12 @@ const (
 	cacheTTL    = 1 * time.Second
 	execTimeout = 2 * time.Second
 )
+
+// ErrInterfaceAbsent is the error stored on Snapshot.Err when the
+// configured admin interface does not exist in sysfs. Refresh
+// short-circuits in that case so the dashboard never waits for `ip`
+// to fail with ENODEV.
+var ErrInterfaceAbsent = errors.New("interface absent")
 
 // Info is the public, flattened view of the admin interface.
 type Info struct {
@@ -49,11 +56,16 @@ type operstateFunc func(name string) (string, error)
 // execFunc runs a single command and returns stdout. Injected for tests.
 type execFunc func(ctx context.Context, name string, args ...string) ([]byte, error)
 
+// existsFunc reports whether the named interface exists. In production
+// this is a sysfs stat; tests inject a stub.
+type existsFunc func(name string) bool
+
 // Collector lazily refreshes admin-interface state.
 type Collector struct {
 	iface     string
 	operstate operstateFunc
 	run       execFunc
+	exists    existsFunc
 	clock     func() time.Time
 	ttl       time.Duration
 
@@ -74,14 +86,19 @@ func New(cfg config.Config) *Collector {
 		}
 		return strings.TrimSpace(string(b)), nil
 	}
-	return newWithDeps(cfg.AdminIf, operstate, defaultRun, time.Now, cacheTTL)
+	exists := func(name string) bool {
+		_, err := os.Stat(filepath.Join(cfg.SysPath, "class", "net", name))
+		return err == nil
+	}
+	return newWithDeps(cfg.AdminIf, operstate, defaultRun, exists, time.Now, cacheTTL)
 }
 
-func newWithDeps(iface string, op operstateFunc, run execFunc, clock func() time.Time, ttl time.Duration) *Collector {
+func newWithDeps(iface string, op operstateFunc, run execFunc, exists existsFunc, clock func() time.Time, ttl time.Duration) *Collector {
 	c := &Collector{
 		iface:     iface,
 		operstate: op,
 		run:       run,
+		exists:    exists,
 		clock:     clock,
 		ttl:       ttl,
 	}
@@ -108,6 +125,18 @@ func (c *Collector) refresh(ctx context.Context) {
 	}
 	now := c.clock()
 	prev := c.snap.Load()
+
+	// Short-circuit when the configured interface is absent from sysfs.
+	// Avoids a multi-second wait for `ip` to fail with ENODEV.
+	if c.exists != nil && !c.exists(c.iface) {
+		c.snap.Store(&Snapshot{
+			At:   now,
+			Info: Info{Interface: c.iface},
+			Err:  ErrInterfaceAbsent,
+		})
+		c.lastAt = now
+		return
+	}
 
 	runCtx, cancel := context.WithTimeout(ctx, execTimeout)
 	defer cancel()

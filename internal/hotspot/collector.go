@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,12 @@ const (
 	cacheTTL    = 1 * time.Second
 	execTimeout = 2 * time.Second
 )
+
+// ErrInterfaceAbsent is the error stored on Snapshot.Err when the
+// configured hotspot interface does not exist in sysfs. Refresh
+// short-circuits in that case so the dashboard never waits for `iw`
+// to fail with ENODEV.
+var ErrInterfaceAbsent = errors.New("interface absent")
 
 // Snapshot is the cached result of a successful (or last-good) refresh.
 // It is published atomically; callers must treat it as read-only.
@@ -42,6 +49,10 @@ type iwFunc func(ctx context.Context, iface string) ([]byte, error)
 // callers can distinguish "no leases known" from "read error".
 type leasesFunc func() ([]byte, error)
 
+// existsFunc reports whether the named interface exists. In production
+// this is a sysfs stat; tests inject a stub.
+type existsFunc func(name string) bool
+
 // Collector lazily refreshes a cached hotspot snapshot. Refresh happens
 // at most once per cacheTTL; failed refreshes leave the previous
 // snapshot's Clients intact but set Snapshot.Err.
@@ -49,6 +60,7 @@ type Collector struct {
 	iface  string
 	runIw  iwFunc
 	leases leasesFunc
+	exists existsFunc
 	clock  func() time.Time
 	ttl    time.Duration
 
@@ -61,10 +73,15 @@ type Collector struct {
 // invoked via exec.CommandContext with a 2s timeout; the lease file is
 // read at cfg.LeasesPath.
 func New(cfg config.Config) *Collector {
+	exists := func(name string) bool {
+		_, err := os.Stat(filepath.Join(cfg.SysPath, "class", "net", name))
+		return err == nil
+	}
 	return newWithDeps(
 		cfg.HotspotIf,
 		defaultRunIw,
 		func() ([]byte, error) { return os.ReadFile(cfg.LeasesPath) },
+		exists,
 		time.Now,
 		cacheTTL,
 	)
@@ -72,11 +89,12 @@ func New(cfg config.Config) *Collector {
 
 // newWithDeps is the test-friendly constructor: all external effects
 // are injected.
-func newWithDeps(iface string, runIw iwFunc, leases leasesFunc, clock func() time.Time, ttl time.Duration) *Collector {
+func newWithDeps(iface string, runIw iwFunc, leases leasesFunc, exists existsFunc, clock func() time.Time, ttl time.Duration) *Collector {
 	c := &Collector{
 		iface:  iface,
 		runIw:  runIw,
 		leases: leases,
+		exists: exists,
 		clock:  clock,
 		ttl:    ttl,
 	}
@@ -114,6 +132,19 @@ func (c *Collector) refresh(ctx context.Context) {
 
 	now := c.clock()
 	prev := c.snap.Load()
+
+	// Short-circuit when the configured interface is absent from sysfs.
+	// Avoids waiting for `iw` to fail with ENODEV when wlan0 vanishes
+	// (e.g. driver crash, hardware removed).
+	if c.exists != nil && !c.exists(c.iface) {
+		c.snap.Store(&Snapshot{
+			At:    now,
+			Iface: c.iface,
+			Err:   ErrInterfaceAbsent,
+		})
+		c.lastAt = now
+		return
+	}
 
 	iwCtx, cancel := context.WithTimeout(ctx, execTimeout)
 	defer cancel()

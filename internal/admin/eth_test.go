@@ -66,12 +66,13 @@ func TestOperstateMapping(t *testing.T) {
 		{"dormant", nil, false, false},
 		{"", fs.ErrNotExist, false, true},
 	}
+	exists := func(name string) bool { return true }
 	for _, tc := range cases {
 		t.Run(tc.state, func(t *testing.T) {
 			op := func(name string) (string, error) {
 				return tc.state, tc.readErr
 			}
-			c := newWithDeps("eth0", op, run, time.Now, 1*time.Millisecond)
+			c := newWithDeps("eth0", op, run, exists, time.Now, 1*time.Millisecond)
 			snap := c.Snapshot(context.Background())
 			if snap.Info.Link != tc.wantLink {
 				t.Errorf("state=%q: Link got %v, want %v", tc.state, snap.Info.Link, tc.wantLink)
@@ -127,7 +128,8 @@ func TestCollectorTTLAndLastGood(t *testing.T) {
 	clock := func() time.Time { return time.Unix(0, now.Load()) }
 
 	ttl := 5 * time.Second
-	c := newWithDeps("eth0", op, run, clock, ttl)
+	exists := func(name string) bool { return true }
+	c := newWithDeps("eth0", op, run, exists, clock, ttl)
 
 	first := c.Snapshot(context.Background())
 	if !first.Info.Link || first.Info.IP != "10.0.0.5" {
@@ -191,5 +193,38 @@ func TestCollectorTTLAndLastGood(t *testing.T) {
 	}
 	if !snap.Info.Link {
 		t.Errorf("Link should still be true on ip-addr-only failure")
+	}
+}
+
+// TestCollectorInterfaceAbsent — when existsFunc reports the interface
+// is missing, refresh must skip operstate and ip entirely and surface
+// ErrInterfaceAbsent.
+func TestCollectorInterfaceAbsent(t *testing.T) {
+	op := func(name string) (string, error) {
+		t.Errorf("operstate should not be called when interface is absent")
+		return "", nil
+	}
+	run := dispatchRun(
+		func() ([]byte, error) {
+			t.Errorf("ip addr should not be called when interface is absent")
+			return nil, nil
+		},
+		func() ([]byte, error) {
+			t.Errorf("ip route should not be called when interface is absent")
+			return nil, nil
+		},
+	)
+	exists := func(name string) bool { return false }
+
+	c := newWithDeps("eth0", op, run, exists, time.Now, 1*time.Millisecond)
+	snap := c.Snapshot(context.Background())
+	if !errors.Is(snap.Err, ErrInterfaceAbsent) {
+		t.Errorf("expected ErrInterfaceAbsent, got %v", snap.Err)
+	}
+	if snap.Info.Link {
+		t.Errorf("absent: expected Link=false; got %+v", snap.Info)
+	}
+	if snap.Info.IP != "" || snap.Info.Gateway != "" {
+		t.Errorf("absent: expected empty IP/Gateway, got %+v", snap.Info)
 	}
 }

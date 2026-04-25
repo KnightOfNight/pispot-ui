@@ -147,7 +147,8 @@ Station cc:cc:cc:cc:cc:cc (on wlan0)
 		return []byte(leases), nil
 	}
 
-	c := newWithDeps("wlan0", runIw, readLeases, time.Now, 100*time.Millisecond)
+	exists := func(name string) bool { return true }
+	c := newWithDeps("wlan0", runIw, readLeases, exists, time.Now, 100*time.Millisecond)
 	snap := c.Snapshot(context.Background())
 
 	if snap.Err != nil {
@@ -187,7 +188,7 @@ Station cc:cc:cc:cc:cc:cc (on wlan0)
 
 	// Missing lease file should not be fatal.
 	readMissing := func() ([]byte, error) { return nil, fs.ErrNotExist }
-	c2 := newWithDeps("wlan0", runIw, readMissing, time.Now, 100*time.Millisecond)
+	c2 := newWithDeps("wlan0", runIw, readMissing, exists, time.Now, 100*time.Millisecond)
 	snap2 := c2.Snapshot(context.Background())
 	if snap2.Err != nil {
 		t.Errorf("missing leases: should not set Err, got: %v", snap2.Err)
@@ -219,7 +220,8 @@ func TestCollectorTTLAndLastGood(t *testing.T) {
 	clock := func() time.Time { return time.Unix(0, now.Load()) }
 
 	ttl := 5 * time.Second
-	c := newWithDeps("wlan0", runIw, readLeases, clock, ttl)
+	exists := func(name string) bool { return true }
+	c := newWithDeps("wlan0", runIw, readLeases, exists, clock, ttl)
 
 	// Hammer Snapshot from many goroutines within the TTL window. Only
 	// one iw call should result.
@@ -269,5 +271,29 @@ func TestCollectorTTLAndLastGood(t *testing.T) {
 	}
 	if len(snap.Clients) != 2 {
 		t.Errorf("last-good: expected 2 clients retained, got %d", len(snap.Clients))
+	}
+}
+
+// TestCollectorInterfaceAbsent — when existsFunc reports the interface
+// is missing, refresh must short-circuit before iw is invoked and must
+// surface ErrInterfaceAbsent.
+func TestCollectorInterfaceAbsent(t *testing.T) {
+	runIw := func(ctx context.Context, iface string) ([]byte, error) {
+		t.Errorf("iw should not be called when interface is absent")
+		return nil, errors.New("unexpected iw call")
+	}
+	readLeases := func() ([]byte, error) {
+		t.Errorf("leases should not be read when interface is absent")
+		return nil, nil
+	}
+	exists := func(name string) bool { return false }
+
+	c := newWithDeps("wlan0", runIw, readLeases, exists, time.Now, 1*time.Millisecond)
+	snap := c.Snapshot(context.Background())
+	if !errors.Is(snap.Err, ErrInterfaceAbsent) {
+		t.Errorf("expected ErrInterfaceAbsent, got %v", snap.Err)
+	}
+	if len(snap.Clients) != 0 {
+		t.Errorf("absent: expected 0 clients, got %d", len(snap.Clients))
 	}
 }
