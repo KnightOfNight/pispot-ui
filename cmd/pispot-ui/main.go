@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcs-net/pispot-ui/internal/admin"
 	"github.com/mcs-net/pispot-ui/internal/api"
+	"github.com/mcs-net/pispot-ui/internal/authz"
 	"github.com/mcs-net/pispot-ui/internal/buildinfo"
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
@@ -51,17 +52,39 @@ func main() {
 	mux.HandleFunc("/api/stats", srv.Stats())
 	mux.HandleFunc("/healthz", srv.Healthz())
 
+	// Auth middleware: no-op when AUTH_SOCKET is unset (local dev).
+	// When set, all routes except /healthz require Basic Auth via
+	// pispot-authd. Returns 503 when the helper socket is unavailable.
+	authMiddleware := authz.Middleware(cfg.AuthSocket, cfg.AuthRealm)
+
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           logRequests(mux),
+		Handler:           logRequests(authMiddleware(mux)),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+	tlsEnabled := cfg.TLSCertFile != "" && cfg.TLSKeyFile != ""
+	if (cfg.TLSCertFile == "") != (cfg.TLSKeyFile == "") {
+		log.Fatalf("TLS_CERT_FILE and TLS_KEY_FILE must be set together")
+	}
+	if cfg.RequireTLS && !tlsEnabled {
+		log.Fatalf("REQUIRE_TLS is true but TLS_CERT_FILE/TLS_KEY_FILE are not both set")
 	}
 
 	go func() {
-		log.Printf("pispot-ui %s (%s) listening on %s (hotspot=%s wan=%s admin=%s)",
+		scheme := "http"
+		if tlsEnabled {
+			scheme = "https"
+		}
+		log.Printf("pispot-ui %s (%s) listening on %s://%s (hotspot=%s wan=%s admin=%s)",
 			buildinfo.Commit, buildinfo.BuildTime,
-			cfg.ListenAddr, cfg.HotspotIf, cfg.WANIf, cfg.AdminIf)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			scheme, cfg.ListenAddr, cfg.HotspotIf, cfg.WANIf, cfg.AdminIf)
+		var err error
+		if tlsEnabled {
+			err = httpServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+		} else {
+			err = httpServer.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("listen: %v", err)
 		}
 	}()

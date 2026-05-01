@@ -51,13 +51,13 @@ Visual signals used on the dashboard:
 ## Architecture
 
 ```
-browser (LAN) ──► http://<pi>:8080 ──► pispot-ui container (host netns)
-                                        │
-                                        ├─ /proc (ro)              [throughput]
-                                        ├─ /sys  (ro)              [link/carrier]
-                                        ├─ iw dev wlan0 station dump [clients]
-                                        ├─ iw dev wlan1 link        [WAN SSID]
-                                        └─ dnsmasq.leases (ro)      [hostnames]
+browser (LAN) ──► https://n1qzs-radios.private.magrathea.com/ ──► pispot-ui container (host netns)
+                                                                     │
+                                                                     ├─ /proc (ro)              [throughput]
+                                                                     ├─ /sys  (ro)              [link/carrier]
+                                                                     ├─ iw dev wlan0 station dump [clients]
+                                                                     ├─ iw dev wlan1 link        [WAN SSID]
+                                                                     └─ dnsmasq.leases (ro)      [hostnames]
 ```
 
 - Backend: Go 1.26, static binary, embedded static assets.
@@ -96,6 +96,9 @@ Linux `/proc`, `/sys`, `iw`, and `ip` which aren't present on macOS —
 expect empty values and populated `.error` fields on every section.
 Live system data requires the container on the Pi.
 
+Local development uses HTTP unless `TLS_CERT_FILE` and `TLS_KEY_FILE`
+are set. Production compose requires TLS and listens on `:443`.
+
 ## Deployment (Pi)
 
 Git-based workflow. You push from the Mac, pull on the Pi, and rebuild
@@ -120,11 +123,11 @@ docker compose up -d --build
 Verify:
 
 ```
-curl -s http://localhost:8080/healthz     # -> ok
-curl -s http://localhost:8080/api/stats | head
+curl -s https://n1qzs-radios.private.magrathea.com/healthz     # -> ok
+curl -s https://n1qzs-radios.private.magrathea.com/api/stats | head
 ```
 
-Then browse to `http://<pi-host>:8080/` on the LAN.
+Then browse to `https://n1qzs-radios.private.magrathea.com/` on the LAN.
 
 ### Deploying a Mac-built image (no build on the Pi)
 
@@ -171,7 +174,12 @@ All via environment variables (see `.env.example`). Defaults in
 
 | Variable      | Default                         | Purpose                              |
 |---------------|---------------------------------|--------------------------------------|
-| `LISTEN_ADDR` | `:8080`                         | HTTP listen address                  |
+| `LISTEN_ADDR` | `:443`                          | HTTPS listen address in production   |
+| `TLS_CERT_FILE` | `/run/certs/fullchain.pem`     | TLS certificate/fullchain path       |
+| `TLS_KEY_FILE` | `/run/certs/star_private_magrathea_com.key` | TLS private key path       |
+| `REQUIRE_TLS` | `true`                          | Fail startup unless TLS is configured |
+| `AUTH_SOCKET` | `/run/pispot-authd.sock`        | Path to pispot-authd Unix socket; empty = no auth (local dev) |
+| `AUTH_REALM`  | `N1QZS Radio Hotspot`           | Browser Basic Auth realm string      |
 | `HOTSPOT_IF`  | `wlan0`                         | LAN / hotspot interface              |
 | `WAN_IF`      | `wlan1`                         | Upstream / roaming WAN interface     |
 | `ADMIN_IF`    | `eth0`                          | Administration interface             |
@@ -191,10 +199,16 @@ All via environment variables (see `.env.example`). Defaults in
 
 ## Security notes
 
-- No authentication. `:8080` is exposed on every interface Docker sees
+- M6.2 adds Basic Auth via the host-side `pispot-authd` PAM helper.
+  Access requires Unix group membership: `pispot-ro` (read-only) or
+  `pispot-admin` (full admin). `/healthz` is unauthenticated.
+  When `AUTH_SOCKET` is unset (local dev), auth is disabled.
+- Production listens on `:443` on every interface Docker sees
   (wlan0, wlan1, eth0). Restrict at the host firewall if needed.
 - Data exposed: interface names/counters, hotspot client MACs/IPs/hostnames,
   WAN SSID/BSSID/signal. Read-only.
+- TLS certs are mounted from the host at runtime; private keys are not
+  stored in this public repo or baked into the image.
 - Container runs with `cap_drop: [ALL]` + `cap_add: [NET_ADMIN]` and a
   read-only rootfs.
 

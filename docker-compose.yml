@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
 
     # Host networking so we see wlan0/wlan1/eth0 directly and can listen
-    # on :8080 on all of them. pid host lets iw resolve processes cleanly.
+    # on :443 on all of them. pid host lets iw resolve processes cleanly.
     network_mode: host
     pid: host
 
@@ -16,6 +16,7 @@ services:
       - ALL
     cap_add:
       - NET_ADMIN
+      - NET_BIND_SERVICE
 
     # Read-only rootfs with a writable tmpfs for any scratch needs.
     read_only: true
@@ -25,10 +26,17 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      - /etc/pispot/certs:/run/certs:ro
+      - /run/pispot/pispot-authd.sock:/run/pispot-authd.sock
       - /var/lib/misc/dnsmasq.leases:/host/dnsmasq.leases:ro
 
     environment:
-      LISTEN_ADDR: ":8080"
+      LISTEN_ADDR: ":443"
+      TLS_CERT_FILE: "/run/certs/fullchain.pem"
+      TLS_KEY_FILE:  "/run/certs/star_private_magrathea_com.key"
+      REQUIRE_TLS:   "true"
+      AUTH_SOCKET:   "/run/pispot-authd.sock"
+      AUTH_REALM:    "N1QZS Radio Hotspot"
       HOTSPOT_IF:  "wlan0"
       WAN_IF:      "wlan1"
       ADMIN_IF:    "eth0"
