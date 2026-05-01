@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -121,18 +122,33 @@ func newWithDeps(readLoad, readMem, readTemp readerFunc, selectTherm thermalSele
 // Run blocks, sampling every interval until ctx is done. Intended to
 // run in its own goroutine.
 func (c *Collector) Run(ctx context.Context) {
+	log.Printf("system: collector starting (interval=%s)", c.interval)
+
 	// Seed an initial sample immediately.
 	c.tick()
 
 	t := time.NewTicker(c.interval)
 	defer t.Stop()
 
+	var prevThrottled bool
 	for {
 		select {
 		case <-ctx.Done():
+			log.Printf("system: collector stopped")
 			return
 		case <-t.C:
 			c.tick()
+			// Log only on throttle state changes to avoid 86400 lines/day.
+			snap := c.Snapshot()
+			if snap != nil && snap.Info.Throttled != prevThrottled {
+				if snap.Info.Throttled {
+					log.Printf("system: THROTTLED temp=%.1f°C (threshold=%.0f°C)",
+						snap.Info.TempCelsius, thermalThrottleCelsius)
+				} else {
+					log.Printf("system: throttle cleared temp=%.1f°C", snap.Info.TempCelsius)
+				}
+				prevThrottled = snap.Info.Throttled
+			}
 		}
 	}
 }

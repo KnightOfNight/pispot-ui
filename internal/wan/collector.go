@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,9 +51,12 @@ type Collector struct {
 	clock  func() time.Time
 	ttl    time.Duration
 
-	mu     sync.Mutex
-	lastAt time.Time
-	snap   atomic.Pointer[Snapshot]
+	mu            sync.Mutex
+	lastAt        time.Time
+	snap          atomic.Pointer[Snapshot]
+	prevConnected bool
+	prevSSID      string
+	prevAbsent    bool
 }
 
 // New returns a Collector configured from cfg. Production use shells
@@ -106,13 +110,21 @@ func (c *Collector) refresh(ctx context.Context) {
 	// wait for `iw` to fail with ENODEV on first request after a boot
 	// without the device.
 	if c.exists != nil && !c.exists(c.iface) {
+		if !c.prevAbsent {
+			log.Printf("wan: interface %s absent in sysfs", c.iface)
+			c.prevAbsent = true
+		}
 		c.snap.Store(&Snapshot{
 			At:   now,
-			Info: Info{Interface: c.iface},
+			Info: Info{Interface: c.iface, InterfacePresent: false},
 			Err:  ErrInterfaceAbsent,
 		})
 		c.lastAt = now
 		return
+	}
+	if c.prevAbsent {
+		log.Printf("wan: interface %s present in sysfs", c.iface)
+		c.prevAbsent = false
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, execTimeout)
@@ -121,18 +133,29 @@ func (c *Collector) refresh(ctx context.Context) {
 	// Step 1: iw dev <iface> link — determines connection state + radio info.
 	iwOut, iwErr := c.run(runCtx, "iw", "dev", c.iface, "link")
 	if iwErr != nil {
+		log.Printf("wan: iw link failed on %s: %v", c.iface, iwErr)
 		c.storeFailure(now, prev, fmt.Errorf("iw: %w", iwErr))
 		return
 	}
 	link := parseIwLink(iwOut)
 
-	info := Info{Interface: c.iface, Connected: link.connected}
+	info := Info{Interface: c.iface, InterfacePresent: true, Connected: link.connected}
 	if !link.connected {
+		if c.prevConnected {
+			log.Printf("wan: %s disconnected (was connected to %q)", c.iface, c.prevSSID)
+			c.prevConnected = false
+			c.prevSSID = ""
+		}
 		// Locked M4 decision: disconnected clears every downstream field
 		// so the UI never displays stale IP/BSSID data for a link that
 		// is definitively not associated.
 		c.storeSuccess(now, info)
 		return
+	}
+	if !c.prevConnected || link.ssid != c.prevSSID {
+		log.Printf("wan: %s connected ssid=%q signal=%ddBm freq=%dMHz", c.iface, link.ssid, link.signalDBm, link.freqMHz)
+		c.prevConnected = true
+		c.prevSSID = link.ssid
 	}
 	info.SSID = link.ssid
 	info.BSSID = link.bssid

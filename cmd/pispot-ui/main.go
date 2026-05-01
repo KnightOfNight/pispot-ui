@@ -50,6 +50,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/", noCacheStatic(http.FileServer(http.FS(web.FS()))))
 	mux.HandleFunc("/api/stats", srv.Stats())
+	mux.HandleFunc("/api/wan/up", srv.WanOp("wan_up"))
+	mux.HandleFunc("/api/wan/down", srv.WanOp("wan_down"))
 	mux.HandleFunc("/healthz", srv.Healthz())
 
 	// Auth middleware: no-op when AUTH_SOCKET is unset (local dev).
@@ -78,6 +80,12 @@ func main() {
 		log.Printf("pispot-ui %s (%s) listening on %s://%s (hotspot=%s wan=%s admin=%s)",
 			buildinfo.Commit, buildinfo.BuildTime,
 			scheme, cfg.ListenAddr, cfg.HotspotIf, cfg.WANIf, cfg.AdminIf)
+		log.Printf("tls: enabled=%v cert=%s", tlsEnabled, cfg.TLSCertFile)
+		if cfg.AuthSocket != "" {
+			log.Printf("auth: socket=%s realm=%q", cfg.AuthSocket, cfg.AuthRealm)
+		} else {
+			log.Printf("auth: disabled (AUTH_SOCKET not set)")
+		}
 		var err error
 		if tlsEnabled {
 			err = httpServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)

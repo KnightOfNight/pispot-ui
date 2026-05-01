@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,9 +70,12 @@ type Collector struct {
 	clock     func() time.Time
 	ttl       time.Duration
 
-	mu     sync.Mutex
-	lastAt time.Time
-	snap   atomic.Pointer[Snapshot]
+	mu         sync.Mutex
+	lastAt     time.Time
+	snap       atomic.Pointer[Snapshot]
+	prevLink   bool
+	prevIP     string
+	prevAbsent bool
 }
 
 // New returns a Collector configured from cfg. In production operstate
@@ -127,8 +131,12 @@ func (c *Collector) refresh(ctx context.Context) {
 	prev := c.snap.Load()
 
 	// Short-circuit when the configured interface is absent from sysfs.
-	// Avoids a multi-second wait for `ip` to fail with ENODEV.
+	// Log only on transition.
 	if c.exists != nil && !c.exists(c.iface) {
+		if !c.prevAbsent {
+			log.Printf("admin: interface %s absent in sysfs", c.iface)
+			c.prevAbsent = true
+		}
 		c.snap.Store(&Snapshot{
 			At:   now,
 			Info: Info{Interface: c.iface},
@@ -136,6 +144,10 @@ func (c *Collector) refresh(ctx context.Context) {
 		})
 		c.lastAt = now
 		return
+	}
+	if c.prevAbsent {
+		log.Printf("admin: interface %s present in sysfs", c.iface)
+		c.prevAbsent = false
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, execTimeout)
@@ -171,6 +183,12 @@ func (c *Collector) refresh(ctx context.Context) {
 	// Gateway blank rather than blocking the rest of the section.
 	if routeOut, routeErr := c.run(runCtx, "ip", "-j", "route", "show", "default"); routeErr == nil {
 		info.Gateway = parseIPRoute(routeOut, c.iface)
+	}
+
+	if info.Link != c.prevLink || info.IP != c.prevIP {
+		log.Printf("admin: %s state changed link=%v ip=%s gateway=%s", c.iface, info.Link, info.IP, info.Gateway)
+		c.prevLink = info.Link
+		c.prevIP = info.IP
 	}
 
 	next := &Snapshot{At: now, Info: info}

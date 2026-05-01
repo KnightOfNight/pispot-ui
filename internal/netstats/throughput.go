@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,6 +131,8 @@ func newWithDeps(ifaces []string, source Source, operstate OperstateFunc, clock 
 // Run blocks, sampling every interval until ctx is done. It is intended
 // to be invoked in its own goroutine by main.
 func (c *Collector) Run(ctx context.Context) {
+	log.Printf("netstats: collector starting (interval=%s ifaces=%v)", c.interval, c.ifaces)
+
 	// Seed an initial sample immediately so the first tick produces a
 	// valid delta rather than another zero-rate snapshot.
 	c.tick()
@@ -140,6 +143,7 @@ func (c *Collector) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			log.Printf("netstats: collector stopped")
 			return
 		case <-t.C:
 			c.tick()

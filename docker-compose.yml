@@ -27,7 +27,7 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /etc/pispot/certs:/run/certs:ro
-      - /run/pispot/pispot-authd.sock:/run/pispot-authd.sock
+      - /run/pispot:/run/pispot:ro
       - /var/lib/misc/dnsmasq.leases:/host/dnsmasq.leases:ro
 
     environment:
@@ -35,7 +35,7 @@ services:
       TLS_CERT_FILE: "/run/certs/fullchain.pem"
       TLS_KEY_FILE:  "/run/certs/star_private_magrathea_com.key"
       REQUIRE_TLS:   "true"
-      AUTH_SOCKET:   "/run/pispot-authd.sock"
+      AUTH_SOCKET:   "/run/pispot/pispot-authd.sock"
       AUTH_REALM:    "N1QZS Radio Hotspot"
       HOTSPOT_IF:  "wlan0"
       WAN_IF:      "wlan1"

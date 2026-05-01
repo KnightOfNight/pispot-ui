@@ -55,21 +55,25 @@ func Middleware(socketPath, realm string) func(http.Handler) http.Handler {
 			}
 
 			// Cache miss: call pispot-authd.
+			// Password is never logged.
+			log.Printf("authz: cache miss for user=%q, calling helper", username)
 			resp, err := callHelper(r.Context(), socketPath, username, password)
 			if err != nil {
 				// Socket unavailable: 503 so the operator knows the
 				// helper is down, rather than silently failing with 401.
-				log.Printf("authz: helper unavailable: %v", err)
+				log.Printf("authz: helper unavailable for user=%q: %v", username, err)
 				http.Error(w, "Authentication service unavailable", http.StatusServiceUnavailable)
 				return
 			}
 
 			if !resp.Ok {
+				log.Printf("authz: denied user=%q: %s", username, resp.Error)
 				w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Basic realm=%q`, realm))
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 
+			log.Printf("authz: ok user=%q role=%s (cached for 5m)", username, resp.Role)
 			cache.set(username, password, resp.Role)
 			ctx := context.WithValue(r.Context(), roleKey, resp.Role)
 			next.ServeHTTP(w, r.WithContext(ctx))

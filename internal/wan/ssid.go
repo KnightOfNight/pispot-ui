@@ -18,17 +18,19 @@ import (
 
 // Info is the public, flattened view of the WAN interface's current
 // upstream association. When Connected is false all other fields are
-// zero/empty by design.
+// zero/empty by design. InterfacePresent is false when the configured
+// WAN interface does not exist in sysfs (e.g. USB Wi-Fi not plugged in).
 type Info struct {
-	Interface     string
-	Connected     bool
-	SSID          string
-	BSSID         string
-	SignalDBm     int
-	FreqMHz       int
-	TxBitrateMbps float64
-	IP            string
-	Gateway       string
+	Interface        string
+	InterfacePresent bool
+	Connected        bool
+	SSID             string
+	BSSID            string
+	SignalDBm        int
+	FreqMHz          int
+	TxBitrateMbps    float64
+	IP               string
+	Gateway          string
 }
 
 // linkResult is the intermediate parsed view of `iw dev <iface> link`.

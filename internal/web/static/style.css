@@ -70,6 +70,42 @@ main {
   gap: 20px;
 }
 
+/* WAN control buttons (admin only). */
+.wan-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ctrl-btn {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ctrl-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ctrl-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wan-op-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.wan-op-status.ok  { color: var(--ok); }
+.wan-op-status.bad { color: var(--bad); }
+
 /* Row of equally-sized panes (WAN + Admin + System). */
 .row-thirds {
   display: grid;

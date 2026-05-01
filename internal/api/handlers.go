@@ -3,11 +3,13 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/mcs-net/pispot-ui/internal/admin"
+	"github.com/mcs-net/pispot-ui/internal/authz"
 	"github.com/mcs-net/pispot-ui/internal/buildinfo"
 	"github.com/mcs-net/pispot-ui/internal/config"
 	"github.com/mcs-net/pispot-ui/internal/hotspot"
@@ -46,16 +48,17 @@ type Hotspot struct {
 
 // WAN is the wlan1 (upstream) summary.
 type WAN struct {
-	Interface     string  `json:"interface"`
-	Connected     bool    `json:"connected"`
-	SSID          string  `json:"ssid"`
-	BSSID         string  `json:"bssid"`
-	SignalDBm     int     `json:"signal_dbm"`
-	FreqMHz       int     `json:"freq_mhz"`
-	TxBitrateMbps float64 `json:"tx_bitrate_mbps"`
-	IP            string  `json:"ip"`
-	Gateway       string  `json:"gateway"`
-	Error         string  `json:"error,omitempty"`
+	Interface        string  `json:"interface"`
+	InterfacePresent bool    `json:"interface_present"`
+	Connected        bool    `json:"connected"`
+	SSID             string  `json:"ssid"`
+	BSSID            string  `json:"bssid"`
+	SignalDBm        int     `json:"signal_dbm"`
+	FreqMHz          int     `json:"freq_mhz"`
+	TxBitrateMbps    float64 `json:"tx_bitrate_mbps"`
+	IP               string  `json:"ip"`
+	Gateway          string  `json:"gateway"`
+	Error            string  `json:"error,omitempty"`
 }
 
 // Admin is the eth0 (administration) summary.
@@ -87,6 +90,7 @@ type Meta struct {
 	Commit        string `json:"commit"`
 	Dirty         bool   `json:"dirty"`
 	BuildTime     string `json:"build_time"`
+	Role          string `json:"role"`
 }
 
 // Stats is the top-level response payload for GET /api/stats.
@@ -127,6 +131,48 @@ func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector, wn *w
 	}
 }
 
+// WanOp handles POST /api/wan/up and /api/wan/down. Requires admin role.
+// Calls the pispot-authd helper with the given op ("wan_up" or "wan_down").
+func (s *Server) WanOp(op string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		role := authz.RoleFromContext(r.Context())
+		log.Printf("wan op: %s requested by role=%q", op, role)
+		if role != "admin" {
+			log.Printf("wan op: %s denied — role=%q is not admin", op, role)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if s.cfg.AuthSocket == "" {
+			log.Printf("wan op: %s denied — AUTH_SOCKET not configured", op)
+			http.Error(w, "auth socket not configured", http.StatusServiceUnavailable)
+			return
+		}
+		ok, errMsg, err := authz.CallOp(r.Context(), s.cfg.AuthSocket, op)
+		if err != nil {
+			log.Printf("wan op: %s socket error: %v", op, err)
+			http.Error(w, "helper unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if ok {
+			log.Printf("wan op: %s succeeded", op)
+		} else {
+			log.Printf("wan op: %s failed: %s", op, errMsg)
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if ok {
+			_, _ = w.Write([]byte(`{"ok":true}` + "\n"))
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			enc := json.NewEncoder(w)
+			_ = enc.Encode(map[string]string{"ok": "false", "error": errMsg})
+		}
+	}
+}
+
 // wanFromCollector builds the JSON-facing WAN struct from the wan
 // collector's latest snapshot. Last-good data is preserved on error
 // and the error text is surfaced via WAN.Error.
@@ -141,15 +187,16 @@ func (s *Server) wanFromCollector(r *http.Request) WAN {
 	}
 	info := snap.Info
 	out = WAN{
-		Interface:     info.Interface,
-		Connected:     info.Connected,
-		SSID:          info.SSID,
-		BSSID:         info.BSSID,
-		SignalDBm:     info.SignalDBm,
-		FreqMHz:       info.FreqMHz,
-		TxBitrateMbps: info.TxBitrateMbps,
-		IP:            info.IP,
-		Gateway:       info.Gateway,
+		Interface:        info.Interface,
+		InterfacePresent: info.InterfacePresent,
+		Connected:        info.Connected,
+		SSID:             info.SSID,
+		BSSID:            info.BSSID,
+		SignalDBm:        info.SignalDBm,
+		FreqMHz:          info.FreqMHz,
+		TxBitrateMbps:    info.TxBitrateMbps,
+		IP:               info.IP,
+		Gateway:          info.Gateway,
 	}
 	if snap.Err != nil {
 		out.Error = snap.Err.Error()
@@ -285,6 +332,7 @@ func (s *Server) Stats() http.HandlerFunc {
 				Commit:        buildinfo.Commit,
 				Dirty:         buildinfo.IsDirty(),
 				BuildTime:     buildinfo.BuildTime,
+				Role:          authz.RoleFromContext(r.Context()),
 			},
 		}
 

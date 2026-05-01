@@ -165,6 +165,50 @@
     $("wan-ip").textContent      = w.ip || "-";
     $("wan-gw").textContent      = w.gateway || "-";
     $("wan-error").textContent   = humanizeError(w.error);
+
+    // WAN controls: only shown to admin when interface is physically present.
+    // Buttons are never shown when interface_present is false — there is
+    // nothing to control if the hardware isn't there.
+    const controls = $("wan-controls");
+    if (currentRole === "admin" && w.interface_present) {
+      controls.hidden = false;
+      const upBtn   = $("btn-wan-up");
+      const downBtn = $("btn-wan-down");
+      if (upBtn && downBtn) {
+        if (wanPending === "up" && !w.connected) {
+          // WAN Up was sent; still associating. Keep both disabled.
+          upBtn.disabled   = true;
+          upBtn.title      = "WAN starting…";
+          downBtn.disabled = true;
+          downBtn.title    = "WAN starting…";
+        } else if (wanPending === "down" && w.connected) {
+          // WAN Down was sent; still disconnecting. Keep both disabled.
+          downBtn.disabled = true;
+          downBtn.title    = "WAN stopping…";
+          upBtn.disabled   = true;
+          upBtn.title      = "WAN stopping…";
+        } else {
+          // Steady state or pending op resolved — clear pending and render
+          // buttons based on actual connection state.
+          if (wanPending !== null) {
+            const statusEl = $("wan-op-status");
+            if (statusEl) {
+              statusEl.textContent = wanPending === "up" ? "WAN up" : "WAN down";
+              setTimeout(() => {
+                if (statusEl) { statusEl.textContent = ""; statusEl.className = "wan-op-status"; }
+              }, 3000);
+            }
+            wanPending = null;
+          }
+          upBtn.disabled   = w.connected;
+          downBtn.disabled = !w.connected;
+          upBtn.title   = w.connected  ? "WAN is already up"   : "Start WAN connection";
+          downBtn.title = !w.connected ? "WAN is already down" : "Stop WAN connection";
+        }
+      }
+    } else {
+      controls.hidden = true;
+    }
   }
 
   function renderAdmin(a) {
@@ -236,9 +280,15 @@
     $("meta-commit").textContent    = m.commit || "-";
     $("meta-buildtime").textContent = m.build_time || "-";
     $("meta-dirty").hidden          = !m.dirty;
+    // Track role globally so renderWAN can use it without receiving it
+    // as a parameter. meta is rendered last, so currentRole is already
+    // set when renderWAN first fires on the next cycle.
+    currentRole = m.role || "";
   }
 
   function render(data) {
+    // Update role before rendering sections that depend on it.
+    currentRole = (data.meta && data.meta.role) || "";
     renderInterfaces(data.interfaces || {});
     renderHotspot(data.hotspot || {});
     renderWAN(data.wan || {});
@@ -247,10 +297,57 @@
     renderMeta(data.meta || {});
   }
 
+  // --- WAN control operations ---------------------------------------------
+
+  // wanPending tracks an in-progress WAN op so renderWAN doesn't override
+  // button state while the physical connection is still transitioning.
+  // "up"   = WAN Up was sent, waiting for wan.connected to become true.
+  // "down" = WAN Down was sent, waiting for wan.connected to become false.
+  // null   = no pending op; renderWAN controls button state normally.
+  let wanPending = null;
+
+  async function wanOp(op) {
+    const statusEl = $("wan-op-status");
+    const upBtn    = $("btn-wan-up");
+    const downBtn  = $("btn-wan-down");
+
+    // Show working state.
+    statusEl.textContent = "Working…";
+    statusEl.className   = "wan-op-status";
+    upBtn.disabled       = true;
+    downBtn.disabled     = true;
+
+    try {
+      const r = await fetch(`/api/wan/${op}`, { method: "POST", cache: "no-store" });
+      if (r.ok) {
+        statusEl.textContent = op === "up" ? "WAN starting…" : "WAN stopping…";
+        statusEl.className   = "wan-op-status ok";
+        // Set pending state so renderWAN holds both buttons disabled while
+        // the physical connection transitions. renderWAN clears wanPending
+        // once wan.connected reaches the expected value.
+        wanPending = op;
+      } else {
+        const body = await r.json().catch(() => ({}));
+        statusEl.textContent = body.error || `Error (${r.status})`;
+        statusEl.className   = "wan-op-status bad";
+        // Op failed — restore buttons so operator can retry.
+        upBtn.disabled   = false;
+        downBtn.disabled = false;
+      }
+    } catch (e) {
+      statusEl.textContent = `Error: ${e.message}`;
+      statusEl.className   = "wan-op-status bad";
+      upBtn.disabled   = false;
+      downBtn.disabled = false;
+    }
+
+  }
+
   // --- refresh loop -------------------------------------------------------
 
   let timer = null;
   let currentInterval = DEFAULT_INTERVAL;
+  let currentRole = "";
 
   function setStatus(state, title) {
     const el = $("status-label");
@@ -297,6 +394,13 @@
       setCookie(COOKIE, String(v));
       setInterval_(v);
     });
+
+    // WAN control buttons — only visible to admin when interface is present;
+    // rendered via renderWAN on each refresh cycle.
+    const upBtn   = $("btn-wan-up");
+    const downBtn = $("btn-wan-down");
+    if (upBtn)   upBtn.addEventListener("click",   () => wanOp("up"));
+    if (downBtn) downBtn.addEventListener("click", () => wanOp("down"));
 
     setInterval_(chosen);
     tick(); // immediate first fetch

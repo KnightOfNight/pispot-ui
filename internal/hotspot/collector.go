@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,9 +65,11 @@ type Collector struct {
 	clock  func() time.Time
 	ttl    time.Duration
 
-	mu     sync.Mutex
-	lastAt time.Time
-	snap   atomic.Pointer[Snapshot]
+	mu              sync.Mutex
+	lastAt          time.Time
+	snap            atomic.Pointer[Snapshot]
+	prevClientCount int
+	prevAbsent      bool
 }
 
 // New returns a Collector configured from cfg. Production use: iw is
@@ -134,9 +137,12 @@ func (c *Collector) refresh(ctx context.Context) {
 	prev := c.snap.Load()
 
 	// Short-circuit when the configured interface is absent from sysfs.
-	// Avoids waiting for `iw` to fail with ENODEV when wlan0 vanishes
-	// (e.g. driver crash, hardware removed).
+	// Log only on transition (present→absent or absent→present).
 	if c.exists != nil && !c.exists(c.iface) {
+		if !c.prevAbsent {
+			log.Printf("hotspot: interface %s absent in sysfs", c.iface)
+			c.prevAbsent = true
+		}
 		c.snap.Store(&Snapshot{
 			At:    now,
 			Iface: c.iface,
@@ -145,12 +151,17 @@ func (c *Collector) refresh(ctx context.Context) {
 		c.lastAt = now
 		return
 	}
+	if c.prevAbsent {
+		log.Printf("hotspot: interface %s present in sysfs", c.iface)
+		c.prevAbsent = false
+	}
 
 	iwCtx, cancel := context.WithTimeout(ctx, execTimeout)
 	defer cancel()
 
 	iwOut, iwErr := c.runIw(iwCtx, c.iface)
 	if iwErr != nil {
+		log.Printf("hotspot: iw station dump failed on %s: %v", c.iface, iwErr)
 		// Keep last-good Clients; surface the error.
 		next := &Snapshot{
 			At:      now,
@@ -193,6 +204,10 @@ func (c *Collector) refresh(ctx context.Context) {
 		// Missing lease file is normal (e.g. no DHCP clients yet); only
 		// surface other read errors (permissions, I/O).
 		next.Err = fmt.Errorf("leases: %w", leaseErr)
+	}
+	if len(clients) != c.prevClientCount {
+		log.Printf("hotspot: client count changed %d -> %d on %s", c.prevClientCount, len(clients), c.iface)
+		c.prevClientCount = len(clients)
 	}
 	c.snap.Store(next)
 	c.lastAt = now
