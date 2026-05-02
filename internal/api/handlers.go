@@ -51,6 +51,7 @@ type Hotspot struct {
 type WAN struct {
 	Interface        string  `json:"interface"`
 	InterfacePresent bool    `json:"interface_present"`
+	SupplicantActive bool    `json:"supplicant_active"`
 	Connected        bool    `json:"connected"`
 	SSID             string  `json:"ssid"`
 	BSSID            string  `json:"bssid"`
@@ -309,6 +310,7 @@ func (s *Server) wanFromCollector(r *http.Request) WAN {
 	out = WAN{
 		Interface:        info.Interface,
 		InterfacePresent: info.InterfacePresent,
+		SupplicantActive: info.SupplicantActive,
 		Connected:        info.Connected,
 		SSID:             info.SSID,
 		BSSID:            info.BSSID,

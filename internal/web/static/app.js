@@ -144,6 +144,27 @@
 
   function renderWAN(w) {
     $("wan-iface").textContent = w.interface ? `(${w.interface})` : "";
+
+    // Status row — about the wlan1 interface and supplicant stack.
+    const statusEl = $("wan-status");
+    if (statusEl) {
+      let statusText, statusCls;
+      if (!w.interface_present) {
+        statusText = "interface not found"; statusCls = "bad";
+      } else if (wanPending === "up") {
+        statusText = "starting"; statusCls = "warn";
+      } else if (wanPending === "down") {
+        statusText = "stopping"; statusCls = "warn";
+      } else if (w.supplicant_active) {
+        statusText = "running"; statusCls = "ok";
+      } else {
+        statusText = "stopped"; statusCls = "bad";
+      }
+      statusEl.textContent = statusText;
+      setClass(statusEl, statusCls);
+    }
+
+    // Connected row — about the WiFi AP association.
     const connEl = $("wan-connected");
     connEl.textContent = w.connected ? "yes" : "no";
     setClass(connEl, w.connected ? "ok" : "bad");
@@ -164,11 +185,12 @@
     $("wan-bitrate").textContent = w.tx_bitrate_mbps ? `${w.tx_bitrate_mbps} Mbps` : "-";
     $("wan-ip").textContent      = w.ip || "-";
     $("wan-gw").textContent      = w.gateway || "-";
-    $("wan-error").textContent   = humanizeError(w.error);
+    // Suppress "interface absent" in the error div — the Status row already
+    // shows "interface not found" in red, so the error div would be redundant.
+    // All other errors (wireless tool error, address lookup failed, etc.) show normally.
+    const wanErrText = (w.error === "interface absent") ? "" : humanizeError(w.error);
+    $("wan-error").textContent = wanErrText;
 
-    // WAN controls: only shown to admin when interface is physically present.
-    // Buttons are never shown when interface_present is false — there is
-    // nothing to control if the hardware isn't there.
     // Config button: always visible to admin regardless of interface state.
     const configBtn = $("btn-wifi-config");
     if (configBtn) configBtn.hidden = (currentRole !== "admin");
@@ -181,27 +203,22 @@
       upBtn.hidden   = !showWanBtns;
       downBtn.hidden = !showWanBtns;
       if (showWanBtns) {
-        if (wanPending === "up" && !w.connected) {
+        if (wanPending === "up" && !w.supplicant_active) {
           upBtn.disabled   = true;  upBtn.title   = "WAN starting…";
           downBtn.disabled = true;  downBtn.title = "WAN starting…";
-        } else if (wanPending === "down" && w.connected) {
+        } else if (wanPending === "down" && w.supplicant_active) {
           downBtn.disabled = true;  downBtn.title = "WAN stopping…";
           upBtn.disabled   = true;  upBtn.title   = "WAN stopping…";
         } else {
-          if (wanPending !== null) {
-            const statusEl = $("wan-op-status");
-            if (statusEl) {
-              statusEl.textContent = wanPending === "up" ? "WAN up" : "WAN down";
-              setTimeout(() => {
-                if (statusEl) { statusEl.textContent = ""; statusEl.className = "wan-op-status"; }
-              }, 3000);
-            }
-            wanPending = null;
-          }
-          upBtn.disabled   = w.connected;
-          downBtn.disabled = !w.connected;
-          upBtn.title   = w.connected  ? "WAN is already up"   : "Start WAN connection";
-          downBtn.title = !w.connected ? "WAN is already down" : "Stop WAN connection";
+          // Clear pending state once the real state has settled.
+          if (wanPending !== null) wanPending = null;
+          // Use supplicant_active as the signal:
+          // Up makes sense when supplicant is NOT running.
+          // Down makes sense when supplicant IS running.
+          upBtn.disabled   = w.supplicant_active;
+          downBtn.disabled = !w.supplicant_active;
+          upBtn.title   = w.supplicant_active  ? "WPA supplicant is already running" : "Start WAN connection";
+          downBtn.title = !w.supplicant_active ? "WPA supplicant is not running"     : "Stop WAN connection";
         }
       }
     }
@@ -303,40 +320,31 @@
   let wanPending = null;
 
   async function wanOp(op) {
-    const statusEl = $("wan-op-status");
-    const upBtn    = $("btn-wan-up");
-    const downBtn  = $("btn-wan-down");
+    const upBtn   = $("btn-wan-up");
+    const downBtn = $("btn-wan-down");
 
-    // Show working state.
-    statusEl.textContent = "Working…";
-    statusEl.className   = "wan-op-status";
-    upBtn.disabled       = true;
-    downBtn.disabled     = true;
+    // Disable both buttons while the op is in-flight.
+    upBtn.disabled   = true;
+    downBtn.disabled = true;
 
     try {
-      const r = await fetch(`/api/wan/${op}`, { method: "POST", cache: "no-store" });
+      const r = await fetch(`/api/wan/${op}`, { method: "POST", cache: "no-store", credentials: "include" });
       if (r.ok) {
-        statusEl.textContent = op === "up" ? "WAN starting…" : "WAN stopping…";
-        statusEl.className   = "wan-op-status ok";
-        // Set pending state so renderWAN holds both buttons disabled while
-        // the physical connection transitions. renderWAN clears wanPending
-        // once wan.connected reaches the expected value.
+        // Set pending state so renderWAN shows "starting"/"stopping" in the
+        // Status row and keeps buttons disabled during the transition.
         wanPending = op;
       } else {
         const body = await r.json().catch(() => ({}));
-        statusEl.textContent = body.error || `Error (${r.status})`;
-        statusEl.className   = "wan-op-status bad";
-        // Op failed — restore buttons so operator can retry.
+        // Surface error in the WAN error div and restore buttons.
+        $("wan-error").textContent = humanizeError(body.error || `Error (${r.status})`);
         upBtn.disabled   = false;
         downBtn.disabled = false;
       }
     } catch (e) {
-      statusEl.textContent = `Error: ${e.message}`;
-      statusEl.className   = "wan-op-status bad";
+      $("wan-error").textContent = humanizeError(e.message);
       upBtn.disabled   = false;
       downBtn.disabled = false;
     }
-
   }
 
   // --- refresh loop -------------------------------------------------------
@@ -361,7 +369,7 @@
 
   async function tick() {
     try {
-      const r = await fetch("/api/stats", { cache: "no-store" });
+      const r = await fetch("/api/stats", { cache: "no-store", credentials: "include" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       render(data);

@@ -112,13 +112,7 @@ main {
   cursor: not-allowed;
 }
 
-.wan-op-status {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.wan-op-status.ok  { color: var(--ok); }
-.wan-op-status.bad { color: var(--bad); }
+/* wan-op-status removed — WAN Status row in the kv-grid replaced it. */
 
 /* Row of equally-sized panes (WAN + Admin + System). */
 .row-thirds {

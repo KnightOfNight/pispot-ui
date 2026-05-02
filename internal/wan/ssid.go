@@ -20,9 +20,11 @@ import (
 // upstream association. When Connected is false all other fields are
 // zero/empty by design. InterfacePresent is false when the configured
 // WAN interface does not exist in sysfs (e.g. USB Wi-Fi not plugged in).
+// SupplicantActive is true when wpa_supplicant@wlan1 is running.
 type Info struct {
 	Interface        string
 	InterfacePresent bool
+	SupplicantActive bool
 	Connected        bool
 	SSID             string
 	BSSID            string

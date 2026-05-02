@@ -176,7 +176,8 @@ func TestCollectorTTLAndLastGood(t *testing.T) {
 
 	ttl := 5 * time.Second
 	exists := func(name string) bool { return true }
-	c := newWithDeps("wlan1", run, exists, clock, ttl)
+	supplicant := func(iface string) bool { return true }
+	c := newWithDeps("wlan1", run, exists, supplicant, clock, ttl)
 
 	// First Snapshot triggers a refresh; subsequent within-TTL calls don't.
 	snap := c.Snapshot(context.Background())
@@ -246,7 +247,8 @@ func TestCollectorInterfaceAbsent(t *testing.T) {
 		return nil, errUnexpectedCall
 	}
 	exists := func(name string) bool { return false }
-	c := newWithDeps("wlan99", run, exists, time.Now, 1*time.Millisecond)
+	supplicantAbsent := func(iface string) bool { return false }
+	c := newWithDeps("wlan99", run, exists, supplicantAbsent, time.Now, 1*time.Millisecond)
 
 	snap := c.Snapshot(context.Background())
 	if !errors.Is(snap.Err, ErrInterfaceAbsent) {

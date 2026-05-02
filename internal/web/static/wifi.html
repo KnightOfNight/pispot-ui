@@ -34,6 +34,8 @@
         </tbody>
       </table>
 
+      <p class="sub" id="wifi-note">Changes to the network list are saved immediately. WPA supplicant will use the new settings after restarting.</p>
+
       <div class="wifi-add">
         <h2>Add network</h2>
         <div class="wifi-add-form">
@@ -45,8 +47,7 @@
       </div>
 
       <div class="wifi-reload">
-        <button id="btn-reload" class="ctrl-btn">Reload WAN</button>
-        <span class="sub">Apply changes to running wpa_supplicant</span>
+        <button id="btn-reload" class="ctrl-btn" disabled>Restart WPA Supplicant</button>
         <div class="error" id="reload-error"></div>
       </div>
     </section>
@@ -54,7 +55,12 @@
 
   <footer>
     <div class="meta">
-      WiFi configuration — changes take effect after Reload WAN
+      <span id="meta-host">-</span> &middot;
+      uptime <span id="meta-uptime">-</span> &middot;
+      <span id="meta-commit" class="mono">-</span>
+      <span id="meta-dirty" class="tag tag-dirty" hidden>dirty</span>
+      &middot;
+      <span id="meta-buildtime" class="sub">-</span>
     </div>
     <div class="copyright">pispot &copy; MCS 'Net Productions 2026</div>
   </footer>

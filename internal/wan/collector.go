@@ -1,6 +1,7 @@
 package wan
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -43,13 +44,18 @@ type execFunc func(ctx context.Context, name string, args ...string) ([]byte, er
 // this is a sysfs stat; tests inject a stub.
 type existsFunc func(name string) bool
 
+// supplicantFunc reports whether wpa_supplicant@wlan1 is currently active.
+// In production this runs `systemctl is-active wpa_supplicant@<iface>`.
+type supplicantFunc func(iface string) bool
+
 // Collector lazily refreshes a cached WAN snapshot.
 type Collector struct {
-	iface  string
-	run    execFunc
-	exists existsFunc
-	clock  func() time.Time
-	ttl    time.Duration
+	iface      string
+	run        execFunc
+	exists     existsFunc
+	supplicant supplicantFunc
+	clock      func() time.Time
+	ttl        time.Duration
 
 	mu            sync.Mutex
 	lastAt        time.Time
@@ -66,16 +72,40 @@ func New(cfg config.Config) *Collector {
 		_, err := os.Stat(filepath.Join(cfg.SysPath, "class", "net", name))
 		return err == nil
 	}
-	return newWithDeps(cfg.WANIf, defaultRun, exists, time.Now, cacheTTL)
+	procPath := cfg.ProcPath
+	supplicant := func(iface string) bool {
+		// Check whether wpa_supplicant is running for this interface by
+		// scanning /host/proc/*/cmdline. This avoids exec'ing systemctl
+		// inside the container, which requires D-Bus and hangs when the
+		// socket is not mounted.
+		matches, err := filepath.Glob(filepath.Join(procPath, "*/cmdline"))
+		if err != nil {
+			return false
+		}
+		needle := []byte("wpa_supplicant")
+		ifaceBytes := []byte(iface)
+		for _, m := range matches {
+			data, err := os.ReadFile(m)
+			if err != nil {
+				continue
+			}
+			if bytes.Contains(data, needle) && bytes.Contains(data, ifaceBytes) {
+				return true
+			}
+		}
+		return false
+	}
+	return newWithDeps(cfg.WANIf, defaultRun, exists, supplicant, time.Now, cacheTTL)
 }
 
-func newWithDeps(iface string, run execFunc, exists existsFunc, clock func() time.Time, ttl time.Duration) *Collector {
+func newWithDeps(iface string, run execFunc, exists existsFunc, supplicant supplicantFunc, clock func() time.Time, ttl time.Duration) *Collector {
 	c := &Collector{
-		iface:  iface,
-		run:    run,
-		exists: exists,
-		clock:  clock,
-		ttl:    ttl,
+		iface:      iface,
+		run:        run,
+		exists:     exists,
+		supplicant: supplicant,
+		clock:      clock,
+		ttl:        ttl,
 	}
 	c.snap.Store(&Snapshot{At: clock(), Info: Info{Interface: iface}})
 	return c
@@ -139,7 +169,8 @@ func (c *Collector) refresh(ctx context.Context) {
 	}
 	link := parseIwLink(iwOut)
 
-	info := Info{Interface: c.iface, InterfacePresent: true, Connected: link.connected}
+	supplicantActive := c.supplicant != nil && c.supplicant(c.iface)
+	info := Info{Interface: c.iface, InterfacePresent: true, SupplicantActive: supplicantActive, Connected: link.connected}
 	if !link.connected {
 		if c.prevConnected {
 			log.Printf("wan: %s disconnected (was connected to %q)", c.iface, c.prevSSID)

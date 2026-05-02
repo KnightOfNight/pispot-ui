@@ -32,7 +32,7 @@ LDFLAGS       := -s -w \
 #   make ship PI_HOST=other-host.local
 PI_HOST    := n1qzs-radios.local
 
-.PHONY: all build test tidy vet fmt run-local docker-build image-size \
+.PHONY: all build test tidy vet fmt js-check run-local docker-build image-size \
         ship build-and-ship engage deploy clean help
 
 all: build
@@ -43,6 +43,7 @@ help:
 	@echo "  test          Run unit tests"
 	@echo "  vet           go vet"
 	@echo "  fmt           gofmt -w on all Go files"
+	@echo "  js-check      Syntax-check all embedded JS files via node --check"
 	@echo "  tidy          go mod tidy (keep go directive at 1.26)"
 	@echo "  run-local     Build and run locally; collectors will fail on non-Linux hosts"
 	@echo "  docker-build  Build the container image locally (linux/arm64)"
@@ -67,6 +68,14 @@ fmt:
 
 tidy:
 	go mod tidy
+
+# Syntax-check all embedded JavaScript files. Catches SyntaxError bugs
+# that Go tests cannot see (the JS is embedded as opaque bytes).
+JS_FILES := $(wildcard internal/web/static/*.js)
+js-check:
+	@for f in $(JS_FILES); do \
+	  node --check $$f && echo "ok $$f" || exit 1; \
+	done
 
 run-local: build
 	LISTEN_ADDR=":8080" \
