@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WiFi Networks — N1QZS Radio Hotspot</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>N1QZS Radio Hotspot</h1>
+    <div class="controls">
+      <a href="/" class="ctrl-link">← Dashboard</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="section-wifi">
+      <h2>WiFi Networks <span class="sub">(wlan1)</span></h2>
+      <div class="error" id="wifi-error"></div>
+
+      <table class="wifi-table" id="wifi-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>SSID</th>
+            <th>Password</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="wifi-rows">
+          <tr><td colspan="4" class="sub">Loading…</td></tr>
+        </tbody>
+      </table>
+
+      <div class="wifi-add">
+        <h2>Add network</h2>
+        <div class="wifi-add-form">
+          <input id="add-ssid"     type="text"     placeholder="SSID"     class="wifi-input" autocomplete="off" spellcheck="false">
+          <input id="add-password" type="password" placeholder="Password" class="wifi-input" autocomplete="new-password">
+          <button id="btn-add" class="ctrl-btn">Add</button>
+        </div>
+        <div class="error" id="add-error"></div>
+      </div>
+
+      <div class="wifi-reload">
+        <button id="btn-reload" class="ctrl-btn">Reload WAN</button>
+        <span class="sub">Apply changes to running wpa_supplicant</span>
+        <div class="error" id="reload-error"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="meta">
+      WiFi configuration — changes take effect after Reload WAN
+    </div>
+    <div class="copyright">pispot &copy; MCS 'Net Productions 2026</div>
+  </footer>
+
+  <script src="/wifi.js"></script>
+</body>
+</html>

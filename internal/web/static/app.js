@@ -169,27 +169,25 @@
     // WAN controls: only shown to admin when interface is physically present.
     // Buttons are never shown when interface_present is false — there is
     // nothing to control if the hardware isn't there.
-    const controls = $("wan-controls");
-    if (currentRole === "admin" && w.interface_present) {
-      controls.hidden = false;
-      const upBtn   = $("btn-wan-up");
-      const downBtn = $("btn-wan-down");
-      if (upBtn && downBtn) {
+    // Config button: always visible to admin regardless of interface state.
+    const configBtn = $("btn-wifi-config");
+    if (configBtn) configBtn.hidden = (currentRole !== "admin");
+
+    // WAN Up/Down buttons: visible to admin only when interface is present.
+    const upBtn   = $("btn-wan-up");
+    const downBtn = $("btn-wan-down");
+    if (upBtn && downBtn) {
+      const showWanBtns = currentRole === "admin" && w.interface_present;
+      upBtn.hidden   = !showWanBtns;
+      downBtn.hidden = !showWanBtns;
+      if (showWanBtns) {
         if (wanPending === "up" && !w.connected) {
-          // WAN Up was sent; still associating. Keep both disabled.
-          upBtn.disabled   = true;
-          upBtn.title      = "WAN starting…";
-          downBtn.disabled = true;
-          downBtn.title    = "WAN starting…";
+          upBtn.disabled   = true;  upBtn.title   = "WAN starting…";
+          downBtn.disabled = true;  downBtn.title = "WAN starting…";
         } else if (wanPending === "down" && w.connected) {
-          // WAN Down was sent; still disconnecting. Keep both disabled.
-          downBtn.disabled = true;
-          downBtn.title    = "WAN stopping…";
-          upBtn.disabled   = true;
-          upBtn.title      = "WAN stopping…";
+          downBtn.disabled = true;  downBtn.title = "WAN stopping…";
+          upBtn.disabled   = true;  upBtn.title   = "WAN stopping…";
         } else {
-          // Steady state or pending op resolved — clear pending and render
-          // buttons based on actual connection state.
           if (wanPending !== null) {
             const statusEl = $("wan-op-status");
             if (statusEl) {
@@ -206,8 +204,6 @@
           downBtn.title = !w.connected ? "WAN is already down" : "Stop WAN connection";
         }
       }
-    } else {
-      controls.hidden = true;
     }
   }
 

@@ -88,9 +88,23 @@ main {
   cursor: pointer;
 }
 
-.ctrl-btn:hover:not(:disabled) {
+.ctrl-btn:hover:not(:disabled),
+.ctrl-link:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* ctrl-link: an <a> tag styled identically to .ctrl-btn. */
+.ctrl-link {
+  display: inline-block;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
 }
 
 .ctrl-btn:disabled {
@@ -231,6 +245,41 @@ footer {
   font-weight: 700;
   margin-left: 6px;
   letter-spacing: 0.5px;
+}
+
+/* WiFi management page styles. */
+.wifi-add,
+.wifi-reload {
+  margin-top: 20px;
+}
+
+.wifi-add-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.wifi-input {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  min-width: 180px;
+}
+
+.wifi-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.wifi-psk {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* `dirty` build marker — red to draw the eye, distinct from the

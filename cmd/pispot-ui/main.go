@@ -52,6 +52,9 @@ func main() {
 	mux.HandleFunc("/api/stats", srv.Stats())
 	mux.HandleFunc("/api/wan/up", srv.WanOp("wan_up"))
 	mux.HandleFunc("/api/wan/down", srv.WanOp("wan_down"))
+	mux.HandleFunc("/api/wifi/networks", srv.WifiNetworks())
+	mux.HandleFunc("/api/wifi/networks/", srv.WifiNetwork())
+	mux.HandleFunc("/api/wifi/reload", srv.WifiReload())
 	mux.HandleFunc("/healthz", srv.Healthz())
 
 	// Auth middleware: no-op when AUTH_SOCKET is unset (local dev).

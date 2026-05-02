@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mcs-net/pispot-ui/internal/admin"
@@ -131,6 +132,128 @@ func New(cfg config.Config, ns *netstats.Collector, hs *hotspot.Collector, wn *w
 	}
 }
 
+// wifiAdminCheck is a shared helper that validates the request method,
+// admin role, and auth socket availability for all wifi endpoints.
+// Returns false (and writes an error response) if any check fails.
+func (s *Server) wifiAdminCheck(w http.ResponseWriter, r *http.Request, method string) bool {
+	if r.Method != method {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return false
+	}
+	if authz.RoleFromContext(r.Context()) != "admin" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+	if s.cfg.AuthSocket == "" {
+		http.Error(w, "auth socket not configured", http.StatusServiceUnavailable)
+		return false
+	}
+	return true
+}
+
+// jsonOK writes {"ok":true} with 200.
+func jsonOK(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write([]byte(`{"ok":true}` + "\n"))
+}
+
+// jsonErr writes {"ok":false,"error":"..."} with the given status.
+func jsonErr(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"ok": "false", "error": msg})
+}
+
+// WifiNetworks handles GET /api/wifi/networks (list) and
+// POST /api/wifi/networks (add). Requires admin role.
+func (s *Server) WifiNetworks() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			if authz.RoleFromContext(r.Context()) != "admin" {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			if s.cfg.AuthSocket == "" {
+				http.Error(w, "auth socket not configured", http.StatusServiceUnavailable)
+				return
+			}
+			networks, err := authz.CallWifiList(r.Context(), s.cfg.AuthSocket)
+			if err != nil {
+				log.Printf("wifi list: %v", err)
+				jsonErr(w, http.StatusServiceUnavailable, err.Error())
+				return
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "networks": networks})
+
+		case http.MethodPost:
+			if !s.wifiAdminCheck(w, r, http.MethodPost) {
+				return
+			}
+			var body struct {
+				SSID string `json:"ssid"`
+				PSK  string `json:"psk"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				jsonErr(w, http.StatusBadRequest, "invalid JSON body")
+				return
+			}
+			log.Printf("wifi add: ssid=%q requested by role=%q", body.SSID, authz.RoleFromContext(r.Context()))
+			if err := authz.CallWifiAdd(r.Context(), s.cfg.AuthSocket, body.SSID, body.PSK); err != nil {
+				log.Printf("wifi add: failed ssid=%q: %v", body.SSID, err)
+				jsonErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			log.Printf("wifi add: ok ssid=%q", body.SSID)
+			jsonOK(w)
+
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+// WifiNetwork handles DELETE /api/wifi/networks/{ssid}. Requires admin.
+func (s *Server) WifiNetwork() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.wifiAdminCheck(w, r, http.MethodDelete) {
+			return
+		}
+		// Extract SSID from path: /api/wifi/networks/{ssid}
+		ssid := strings.TrimPrefix(r.URL.Path, "/api/wifi/networks/")
+		if ssid == "" {
+			jsonErr(w, http.StatusBadRequest, "SSID required in path")
+			return
+		}
+		log.Printf("wifi remove: ssid=%q requested by role=%q", ssid, authz.RoleFromContext(r.Context()))
+		if err := authz.CallWifiRemove(r.Context(), s.cfg.AuthSocket, ssid); err != nil {
+			log.Printf("wifi remove: failed ssid=%q: %v", ssid, err)
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		log.Printf("wifi remove: ok ssid=%q", ssid)
+		jsonOK(w)
+	}
+}
+
+// WifiReload handles POST /api/wifi/reload. Requires admin.
+func (s *Server) WifiReload() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.wifiAdminCheck(w, r, http.MethodPost) {
+			return
+		}
+		log.Printf("wifi reload: requested by role=%q", authz.RoleFromContext(r.Context()))
+		if err := authz.CallWifiReload(r.Context(), s.cfg.AuthSocket); err != nil {
+			log.Printf("wifi reload: failed: %v", err)
+			jsonErr(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		log.Printf("wifi reload: ok")
+		jsonOK(w)
+	}
+}
+
 // WanOp handles POST /api/wan/up and /api/wan/down. Requires admin role.
 // Calls the pispot-authd helper with the given op ("wan_up" or "wan_down").
 func (s *Server) WanOp(op string) http.HandlerFunc {
@@ -162,13 +285,10 @@ func (s *Server) WanOp(op string) http.HandlerFunc {
 		} else {
 			log.Printf("wan op: %s failed: %s", op, errMsg)
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if ok {
-			_, _ = w.Write([]byte(`{"ok":true}` + "\n"))
+			jsonOK(w)
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			enc := json.NewEncoder(w)
-			_ = enc.Encode(map[string]string{"ok": "false", "error": errMsg})
+			jsonErr(w, http.StatusInternalServerError, errMsg)
 		}
 	}
 }
