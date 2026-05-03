@@ -144,6 +144,7 @@
 
   function renderWAN(w) {
     $("wan-iface").textContent = w.interface ? `(${w.interface})` : "";
+    lastSupplicantActive = !!w.supplicant_active;
 
     // Status row — about the wlan1 interface and supplicant stack.
     const statusEl = $("wan-status");
@@ -203,18 +204,30 @@
       upBtn.hidden   = !showWanBtns;
       downBtn.hidden = !showWanBtns;
       if (showWanBtns) {
-        if (wanPending === "up" && !w.supplicant_active) {
-          upBtn.disabled   = true;  upBtn.title   = "WAN starting…";
-          downBtn.disabled = true;  downBtn.title = "WAN starting…";
-        } else if (wanPending === "down" && w.supplicant_active) {
-          downBtn.disabled = true;  downBtn.title = "WAN stopping…";
-          upBtn.disabled   = true;  upBtn.title   = "WAN stopping…";
+        if (wanPending === "up") {
+          if (w.supplicant_active) {
+            // Target state reached — supplicant is now running.
+            wanPending = null;
+            upBtn.disabled   = true;   upBtn.title   = "WPA supplicant is already running";
+            downBtn.disabled = false;  downBtn.title = "Stop WAN connection";
+          } else {
+            // Still starting — keep both locked.
+            upBtn.disabled   = true;  upBtn.title   = "WAN starting…";
+            downBtn.disabled = true;  downBtn.title = "WAN starting…";
+          }
+        } else if (wanPending === "down") {
+          if (!w.supplicant_active) {
+            // Target state reached — supplicant is now stopped.
+            wanPending = null;
+            upBtn.disabled   = false;  upBtn.title   = "Start WAN connection";
+            downBtn.disabled = true;   downBtn.title = "WPA supplicant is not running";
+          } else {
+            // Still stopping — keep both locked.
+            upBtn.disabled   = true;  upBtn.title   = "WAN stopping…";
+            downBtn.disabled = true;  downBtn.title = "WAN stopping…";
+          }
         } else {
-          // Clear pending state once the real state has settled.
-          if (wanPending !== null) wanPending = null;
-          // Use supplicant_active as the signal:
-          // Up makes sense when supplicant is NOT running.
-          // Down makes sense when supplicant IS running.
+          // No pending op — reflect current supplicant state directly.
           upBtn.disabled   = w.supplicant_active;
           downBtn.disabled = !w.supplicant_active;
           upBtn.title   = w.supplicant_active  ? "WPA supplicant is already running" : "Start WAN connection";
@@ -314,10 +327,28 @@
 
   // wanPending tracks an in-progress WAN op so renderWAN doesn't override
   // button state while the physical connection is still transitioning.
-  // "up"   = WAN Up was sent, waiting for wan.connected to become true.
-  // "down" = WAN Down was sent, waiting for wan.connected to become false.
+  // "up"   = WAN Up was sent, waiting for supplicant_active to become true.
+  // "down" = WAN Down was sent, waiting for supplicant_active to become false.
   // null   = no pending op; renderWAN controls button state normally.
   let wanPending = null;
+
+  // lastSupplicantActive mirrors the most recent w.supplicant_active value
+  // seen by renderWAN. Used by restoreWanButtons() to put buttons back into
+  // the correct state when a WAN op fails before wanPending is set.
+  let lastSupplicantActive = false;
+
+  // restoreWanButtons sets button state based on the last-known supplicant
+  // state. Called on WAN op failure so buttons reflect reality rather than
+  // being left in the disabled-by-wanOp state.
+  function restoreWanButtons() {
+    const upBtn   = $("btn-wan-up");
+    const downBtn = $("btn-wan-down");
+    if (!upBtn || !downBtn) return;
+    upBtn.disabled   = lastSupplicantActive;
+    downBtn.disabled = !lastSupplicantActive;
+    upBtn.title   = lastSupplicantActive  ? "WPA supplicant is already running" : "Start WAN connection";
+    downBtn.title = !lastSupplicantActive ? "WPA supplicant is not running"     : "Stop WAN connection";
+  }
 
   async function wanOp(op) {
     const upBtn   = $("btn-wan-up");
@@ -335,15 +366,15 @@
         wanPending = op;
       } else {
         const body = await r.json().catch(() => ({}));
-        // Surface error in the WAN error div and restore buttons.
+        // Surface error in the WAN error div. Restore buttons to the
+        // correct state for the current supplicant_active value so the
+        // UI is consistent with the real system state.
         $("wan-error").textContent = humanizeError(body.error || `Error (${r.status})`);
-        upBtn.disabled   = false;
-        downBtn.disabled = false;
+        restoreWanButtons();
       }
     } catch (e) {
       $("wan-error").textContent = humanizeError(e.message);
-      upBtn.disabled   = false;
-      downBtn.disabled = false;
+      restoreWanButtons();
     }
   }
 
