@@ -203,6 +203,9 @@
       const showWanBtns = currentRole === "admin" && w.interface_present;
       upBtn.hidden   = !showWanBtns;
       downBtn.hidden = !showWanBtns;
+      // If the interface disappears while a transition is pending, clear
+      // the pending state so we don't get stuck.
+      if (!showWanBtns && wanPending !== null) wanPending = null;
       if (showWanBtns) {
         if (wanPending === "up") {
           if (w.supplicant_active) {
@@ -351,28 +354,24 @@
   }
 
   async function wanOp(op) {
-    const upBtn   = $("btn-wan-up");
-    const downBtn = $("btn-wan-down");
-
-    // Disable both buttons while the op is in-flight.
-    upBtn.disabled   = true;
-    downBtn.disabled = true;
+    // Set pending state BEFORE the fetch so any tick() that fires while
+    // the request is in-flight sees the pending state and keeps both
+    // buttons locked. Clearing it on failure is safe — renderWAN will
+    // re-apply the correct state on the next poll.
+    wanPending = op;
 
     try {
       const r = await fetch(`/api/wan/${op}`, { method: "POST", cache: "no-store", credentials: "include" });
-      if (r.ok) {
-        // Set pending state so renderWAN shows "starting"/"stopping" in the
-        // Status row and keeps buttons disabled during the transition.
-        wanPending = op;
-      } else {
+      if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        // Surface error in the WAN error div. Restore buttons to the
-        // correct state for the current supplicant_active value so the
-        // UI is consistent with the real system state.
+        wanPending = null;
         $("wan-error").textContent = humanizeError(body.error || `Error (${r.status})`);
         restoreWanButtons();
       }
+      // On success: wanPending stays set; renderWAN clears it once the
+      // target supplicant state is confirmed.
     } catch (e) {
+      wanPending = null;
       $("wan-error").textContent = humanizeError(e.message);
       restoreWanButtons();
     }
